@@ -2,7 +2,7 @@
 agent: claude
 phase: 3
 branch: main
-status: active
+status: paused
 migrations: true
 updated: 2026-09-09
 ---
