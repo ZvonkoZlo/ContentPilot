@@ -44,8 +44,10 @@ Two things do not come along, because they are git-ignored, and that is intentio
 ## Claim a phase before you write code
 
 Ownership lives in `.claims/<your-name>.md` — **one file per agent, so claiming can never
-conflict.** Copy `.claims/EXAMPLE.md`, list the paths you own, commit it, and push before
-you start. Release it by setting `status: done` when you merge.
+conflict.** Copy `.claims/EXAMPLE.md`, list the paths you own, and commit it **to `main`**
+before you start — the hook reads claims from the working tree, so one living only on your
+feature branch is invisible to everyone else. Release it by setting `status: done` when you
+merge.
 
 The hook reads every other agent's claim and refuses a commit that touches their paths.
 

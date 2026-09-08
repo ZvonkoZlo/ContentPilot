@@ -11,6 +11,22 @@ file, the file recording who may edit what would itself be the thing two agents 
 3. Commit and push **before you start writing code**, so the other agent's hook can see it.
 4. When you merge, set `status: done`. The paths are released.
 
+## Claims live on `main`
+
+The hook reads `.claims/` from your working tree. A claim committed only to your feature
+branch is invisible to the other agent, so it protects nothing.
+
+**Commit your claim directly to `main`** (it touches no code), then branch:
+
+```bash
+git checkout main && git pull
+cp .claims/EXAMPLE.md .claims/<your-name>.md   # edit it
+git add .claims/<your-name>.md && git commit -m "Claim phase N" && git push
+git checkout -b phase-N-<name>
+```
+
+Same when you release it: set `status: done` on `main`.
+
 ## How it is enforced
 
 `.githooks/pre-commit` reads every claim file that is not yours and refuses a commit that
