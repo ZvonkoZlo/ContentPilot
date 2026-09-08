@@ -1,0 +1,108 @@
+@* Social proof. Needs no product screenshot, so it stays available when the asset library
+   is thin — which for a new tenant it always is. *@
+
+<div class="ts-root">
+    <div class="ts-mark">&ldquo;</div>
+
+    <div class="ts-body">
+        @if (Model.HasText("rating"))
+        {
+            <div class="ts-rating" data-slot="rating">@Model.Text("rating")</div>
+        }
+
+        <blockquote class="ts-quote" data-slot="quote">@Model.Text("quote")</blockquote>
+
+        <div class="ts-attrib">
+            @if (Model.HasAsset("photo"))
+            {
+                <div class="ts-photo" data-asset-slot="photo">
+                    <img src="@Model.Asset("photo")" alt="" />
+                </div>
+            }
+
+            <div class="ts-who">
+                <div class="ts-name" data-slot="attribution">@Model.Text("attribution")</div>
+
+                @if (Model.HasText("role"))
+                {
+                    <div class="ts-role" data-slot="role">@Model.Text("role")</div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (Model.HasAsset("logo"))
+    {
+        <div class="ts-logo" data-asset-slot="logo" data-immutable="true">
+            <img src="@Model.Asset("logo")" alt="" />
+        </div>
+    }
+</div>
+
+<style>
+    .ts-root {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 56px 50px;
+        background:
+            radial-gradient(70% 50% at 85% 8%, color-mix(in srgb, var(--brand-accent) 30%, transparent), transparent 62%),
+            linear-gradient(170deg, color-mix(in srgb, var(--brand-primary) 22%, var(--ground)), var(--ground) 62%);
+    }
+
+    .ts-mark {
+        font-family: var(--font-heading);
+        font-size: 132px;
+        line-height: .62;
+        font-weight: 700;
+        color: color-mix(in srgb, var(--brand-accent) 55%, transparent);
+        height: 64px;
+    }
+
+    .ts-body { margin-top: auto; }
+
+    .ts-rating {
+        font-size: 20px;
+        letter-spacing: .22em;
+        color: var(--brand-accent);
+        margin-bottom: 18px;
+    }
+
+    .ts-quote {
+        font-family: var(--font-heading);
+        font-size: 36px;
+        line-height: 1.24;
+        letter-spacing: -.01em;
+        font-weight: 600;
+        margin: 0;
+        color: var(--fg);
+        text-wrap: pretty;
+        max-height: 228px;
+        overflow: hidden;
+    }
+
+    .ts-attrib { display: flex; align-items: center; gap: 14px; margin-top: 30px; }
+
+    .ts-photo {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        overflow: hidden;
+        flex: none;
+        background: color-mix(in srgb, var(--brand-primary) 40%, transparent);
+    }
+
+    .ts-photo img { width: 100%; height: 100%; object-fit: cover; }
+
+    .ts-name { font-size: 18px; font-weight: 600; color: var(--fg); }
+    .ts-role { font-size: 15px; color: var(--fg-muted); margin-top: 3px; }
+
+    .ts-logo { width: 104px; height: 34px; margin-top: 34px; opacity: .9; }
+    .ts-logo img { object-position: left center; }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public TemplateModel Model { get; set; } = default!;
+}

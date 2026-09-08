@@ -1,0 +1,145 @@
+@* A real product screenshot in a device frame, never a redrawn one. The screenshot slot is
+   immutable: uniform scale only, and the fidelity check verifies it survived the render. *@
+
+<div class="pf-root">
+    <div class="pf-copy">
+        @if (Model.HasAsset("logo"))
+        {
+            <div class="pf-logo" data-asset-slot="logo" data-immutable="true">
+                <img src="@Model.Asset("logo")" alt="" />
+            </div>
+        }
+
+        <h1 class="pf-headline" data-slot="headline">@Model.Text("headline")</h1>
+
+        @if (Model.HasText("subhead"))
+        {
+            <p class="pf-subhead" data-slot="subhead">@Model.Text("subhead")</p>
+        }
+
+        @if (Model.HasText("cta"))
+        {
+            <span class="pf-cta" data-slot="cta">@Model.Text("cta")</span>
+        }
+    </div>
+
+    <div class="pf-stage">
+        <div class="pf-glow"></div>
+
+        <div class="pf-device">
+            <div class="pf-screen" data-asset-slot="screenshot" data-immutable="true">
+                <img src="@Model.Asset("screenshot")" alt="" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .pf-root {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        padding: 52px 48px 0;
+        background:
+            radial-gradient(90% 60% at 50% 120%, color-mix(in srgb, var(--brand-primary) 45%, transparent), transparent 70%),
+            var(--ground);
+    }
+
+    .pf-copy { position: relative; z-index: 2; }
+
+    .pf-logo { width: 104px; height: 34px; margin-bottom: 26px; }
+    .pf-logo img { object-position: left center; }
+
+    .pf-headline {
+        font-family: var(--font-heading);
+        font-size: 46px;
+        line-height: 1.06;
+        letter-spacing: -.02em;
+        font-weight: 700;
+        margin: 0;
+        color: var(--fg);
+        text-wrap: balance;
+        max-width: 13em;
+        max-height: 100px;
+        overflow: hidden;
+    }
+
+    .pf-subhead {
+        font-size: 19px;
+        line-height: 1.5;
+        color: var(--fg-muted);
+        margin: 16px 0 0;
+        max-width: 24em;
+        max-height: 86px;
+        overflow: hidden;
+    }
+
+    .pf-cta {
+        display: inline-block;
+        margin-top: 22px;
+        padding: 12px 24px;
+        border-radius: 999px;
+        background: var(--brand-primary);
+        color: #fff;
+        font-size: 17px;
+        font-weight: 600;
+        white-space: nowrap;
+        max-width: 90%;
+        overflow: hidden;
+    }
+
+    .pf-stage {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        min-height: 0;
+    }
+
+    .pf-glow {
+        position: absolute;
+        left: 50%;
+        bottom: 6%;
+        width: 78%;
+        height: 62%;
+        transform: translateX(-50%);
+        border-radius: 50%;
+        background: radial-gradient(closest-side, color-mix(in srgb, var(--brand-accent) 55%, transparent), transparent);
+        filter: blur(28px);
+    }
+
+    /* The device frame is decoration around the slot, never over it: the screenshot's own
+       box stays unobstructed so its occlusion measures zero. */
+    /* Sized from the height it actually has. Driving the device off its width let
+       aspect-ratio push it taller than the row, sliding it under the copy above. */
+    .pf-device {
+        position: relative;
+        height: 100%;
+        width: auto;
+        max-width: 66%;
+        aspect-ratio: 9 / 17.5;
+        padding: 9px;
+        border-radius: 40px;
+        background: linear-gradient(160deg, #3a4048, #14171b);
+        box-shadow: 0 30px 70px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08) inset;
+        overflow: hidden;
+    }
+
+    /* A restrained radius: every pixel of corner rounding is product UI the viewer does
+       not get to see, and it counts against the slot occlusion budget. */
+    .pf-screen {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        border-radius: 22px;
+        overflow: hidden;
+        background: #fff;
+    }
+
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public TemplateModel Model { get; set; } = default!;
+}

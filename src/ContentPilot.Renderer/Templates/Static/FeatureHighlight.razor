@@ -1,0 +1,122 @@
+@* Screenshot-led: a browser-chrome card holds the real product UI, copy sits above it.
+   The chrome is drawn around the slot, never over it, so occlusion measures zero. *@
+
+<div class="fh-root">
+    <div class="fh-head">
+        <div class="fh-brandline">
+            @if (Model.HasAsset("logo"))
+            {
+                <div class="fh-logo" data-asset-slot="logo" data-immutable="true">
+                    <img src="@Model.Asset("logo")" alt="" />
+                </div>
+            }
+
+            @if (Model.HasText("eyebrow"))
+            {
+                <span class="fh-chip" data-slot="eyebrow">@Model.Text("eyebrow")</span>
+            }
+        </div>
+
+        <h1 class="fh-headline" data-slot="headline">@Model.Text("headline")</h1>
+
+        @if (Model.HasText("subhead"))
+        {
+            <p class="fh-subhead" data-slot="subhead">@Model.Text("subhead")</p>
+        }
+    </div>
+
+    <div class="fh-card">
+        <div class="fh-chrome">
+            <span class="fh-dot"></span><span class="fh-dot"></span><span class="fh-dot"></span>
+        </div>
+
+        <div class="fh-shot" data-asset-slot="screenshot" data-immutable="true">
+            <img src="@Model.Asset("screenshot")" alt="" />
+        </div>
+    </div>
+</div>
+
+<style>
+    .fh-root {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 34px;
+        padding: 54px 46px 0;
+        background: linear-gradient(180deg, color-mix(in srgb, var(--brand-primary) 18%, var(--ground)) 0%, var(--ground) 55%);
+    }
+
+    .fh-brandline { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+
+    .fh-logo { width: 96px; height: 32px; flex: none; }
+    .fh-logo img { object-position: left center; }
+
+    .fh-chip {
+        display: inline-block;
+        padding: 6px 14px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--brand-primary) 26%, transparent);
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 45%, transparent);
+        color: var(--fg);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        overflow: hidden;
+        max-width: 60%;
+    }
+
+    .fh-headline {
+        font-family: var(--font-heading);
+        font-size: 44px;
+        line-height: 1.07;
+        letter-spacing: -.02em;
+        font-weight: 700;
+        margin: 0;
+        color: var(--fg);
+        text-wrap: balance;
+        max-width: 14em;
+        max-height: 96px;
+        overflow: hidden;
+    }
+
+    .fh-subhead {
+        font-size: 18px;
+        line-height: 1.5;
+        color: var(--fg-muted);
+        margin: 14px 0 0;
+        max-width: 26em;
+        max-height: 54px;
+        overflow: hidden;
+    }
+
+    .fh-card {
+        position: relative;
+        border-radius: var(--radius) var(--radius) 0 0;
+        background: #fff;
+        box-shadow: 0 -2px 0 rgba(255,255,255,.10) inset, 0 34px 70px rgba(0,0,0,.42);
+        overflow: hidden;
+        min-height: 0;
+    }
+
+    .fh-chrome {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 34px;
+        padding: 0 16px;
+        background: #EDEFF2;
+        border-bottom: 1px solid #DFE3E8;
+    }
+
+    .fh-dot { width: 9px; height: 9px; border-radius: 50%; background: #C6CBD2; }
+
+    .fh-shot { position: relative; width: 100%; height: calc(100% - 34px); background: #fff; }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public TemplateModel Model { get; set; } = default!;
+}

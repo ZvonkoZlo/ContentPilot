@@ -1,0 +1,22 @@
+{
+  "templateId": "phone-floating",
+  "version": 1,
+  "name": "Phone floating",
+  "description": "Copy above, a real product screenshot in a device frame below. The screenshot is composited, never generated.",
+  "contentTypes": ["Static"],
+  "aspectRatios": ["FourFive", "NineSixteen"],
+  "pillarAffinity": ["feature-highlight", "problem-solution", "how-it-works"],
+  "safeMode": false,
+  "supportsBackgroundImage": false,
+  "colorSchemes": ["LightOnDark", "DarkOnLight"],
+  "textSlots": [
+    { "id": "headline", "role": "The feature or benefit", "maxChars": 44, "maxLines": 2, "required": true,  "shrinkToFit": true, "minFontPx": 34 },
+    { "id": "subhead",  "role": "Who it is for and why",  "maxChars": 96, "maxLines": 3, "required": false },
+    { "id": "cta",      "role": "Call to action",         "maxChars": 24, "maxLines": 1, "required": false }
+  ],
+  "assetSlots": [
+    { "id": "screenshot", "kind": "ProductScreenshot", "required": true,  "immutable": true, "maxOcclusion": 0.02, "minWidthPx": 0,   "clearSpaceRatio": 0, "_note": "Budget covers the device corner rounding only; nothing may be painted over the UI." },
+    { "id": "logo",       "kind": "Logo",              "required": false, "immutable": true, "maxOcclusion": 0.0,  "minWidthPx": 100, "clearSpaceRatio": 0.25 }
+  ],
+  "safeAreas": { "top": 0.06, "bottom": 0.12, "left": 0.05, "right": 0.05 }
+}

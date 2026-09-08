@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      # Fast suites first: they need no containers, so a layering or invariant break
+      # fails in seconds rather than after the images have been pulled.
+      - name: Unit and architecture tests
+        run: |
+          dotnet test tests/ContentPilot.UnitTests --no-build -c Release
+          dotnet test tests/ContentPilot.ArchitectureTests --no-build -c Release
+
+      # The runner has Docker, so these never skip here — the skip exists only so a
+      # developer machine without Docker still gets a green fast suite.
+      - name: Integration and workflow tests
+        run: |
+          dotnet test tests/ContentPilot.IntegrationTests --no-build -c Release
+          dotnet test tests/ContentPilot.WorkflowTests --no-build -c Release
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: >
+          docker build -f docker/Dockerfile
+          --build-arg PROJECT=src/ContentPilot.Api/ContentPilot.Api.csproj
+          --build-arg ENTRY=ContentPilot.Api.dll
+          -t contentpilot-api .
+
+      - name: Build Worker image
+        run: >
+          docker build -f docker/Dockerfile
+          --build-arg PROJECT=src/ContentPilot.Worker/ContentPilot.Worker.csproj
+          --build-arg ENTRY=ContentPilot.Worker.dll
+          -t contentpilot-worker .

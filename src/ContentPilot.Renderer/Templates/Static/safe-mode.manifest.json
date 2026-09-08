@@ -1,0 +1,22 @@
+{
+  "templateId": "safe-mode",
+  "version": 1,
+  "name": "Safe mode",
+  "description": "Brand-colour gradient, generous type, no imagery. The last rung of the escalation ladder before a human is called.",
+  "contentTypes": ["Static"],
+  "aspectRatios": ["FourFive", "OneOne", "NineSixteen"],
+  "pillarAffinity": ["announcement", "problem-solution", "feature-highlight", "social-proof"],
+  "safeMode": true,
+  "supportsBackgroundImage": false,
+  "colorSchemes": ["LightOnDark"],
+  "textSlots": [
+    { "id": "eyebrow",  "role": "Kicker above the headline", "maxChars": 28,  "maxLines": 1, "required": false },
+    { "id": "headline", "role": "The single claim",          "maxChars": 64,  "maxLines": 3, "required": true,  "shrinkToFit": true, "minFontPx": 34 },
+    { "id": "subhead",  "role": "Supporting sentence",       "maxChars": 112, "maxLines": 3, "required": false },
+    { "id": "cta",      "role": "Call to action",            "maxChars": 26,  "maxLines": 1, "required": false }
+  ],
+  "assetSlots": [
+    { "id": "logo", "kind": "Logo", "required": false, "immutable": true, "maxOcclusion": 0.0, "minWidthPx": 110, "clearSpaceRatio": 0.25 }
+  ],
+  "safeAreas": { "top": 0.06, "bottom": 0.12, "left": 0.05, "right": 0.05 }
+}

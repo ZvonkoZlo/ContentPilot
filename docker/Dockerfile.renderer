@@ -1,0 +1,41 @@
+# The renderer gets its own image for one honest reason: Chromium and FFmpeg turn a 110 MB
+# runtime into roughly 2 GB, and render work is CPU- and memory-bound in a way HTTP request
+# handling is not. That is a sidecar with an HTTP door, not a microservice.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY global.json Directory.Build.props ./
+COPY src/ContentPilot.Rendering.Contracts/ src/ContentPilot.Rendering.Contracts/
+COPY src/ContentPilot.Renderer/ src/ContentPilot.Renderer/
+
+RUN dotnet restore src/ContentPilot.Renderer/ContentPilot.Renderer.csproj
+RUN dotnet publish src/ContentPilot.Renderer/ContentPilot.Renderer.csproj -c Release -o /app --no-restore
+
+# Pinned to the Playwright version the project references. A floating tag would change the
+# Chromium build underneath us, and every golden image would shift with it.
+FROM mcr.microsoft.com/playwright/dotnet:v1.62.0-noble AS runtime
+
+ENV DOTNET_EnableDiagnostics=0 \
+    ASPNETCORE_HTTP_PORTS=8080 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+# FFmpeg is here for the reel compositor in Phase 7. Installing it now keeps the base image
+# stable rather than shifting Chromium underneath the golden images later.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg fontconfig \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=build /app .
+
+# The renderer executes markup shaped by tenant data, so it never runs as root.
+RUN useradd --system --uid 64199 --create-home renderer \
+    && chown -R renderer:renderer /app
+USER renderer
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=20s --timeout=5s --start-period=20s --retries=3 \
+    CMD wget -qO- http://localhost:8080/health/ready || exit 1
+
+ENTRYPOINT ["dotnet", "ContentPilot.Renderer.dll"]

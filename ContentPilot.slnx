@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ContentPilot.Api/ContentPilot.Api.csproj" />
+    <Project Path="src/ContentPilot.Application/ContentPilot.Application.csproj" />
+    <Project Path="src/ContentPilot.Domain/ContentPilot.Domain.csproj" />
+    <Project Path="src/ContentPilot.Infrastructure/ContentPilot.Infrastructure.csproj" />
+    <Project Path="src/ContentPilot.Renderer/ContentPilot.Renderer.csproj" />
+    <Project Path="src/ContentPilot.Rendering.Contracts/ContentPilot.Rendering.Contracts.csproj" />
+    <Project Path="src/ContentPilot.Worker/ContentPilot.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ContentPilot.ArchitectureTests/ContentPilot.ArchitectureTests.csproj" />
+    <Project Path="tests/ContentPilot.IntegrationTests/ContentPilot.IntegrationTests.csproj" />
+    <Project Path="tests/ContentPilot.RendererTests/ContentPilot.RendererTests.csproj" />
+    <Project Path="tests/ContentPilot.UnitTests/ContentPilot.UnitTests.csproj" />
+    <Project Path="tests/ContentPilot.WorkflowTests/ContentPilot.WorkflowTests.csproj" />
+  </Folder>
+</Solution>

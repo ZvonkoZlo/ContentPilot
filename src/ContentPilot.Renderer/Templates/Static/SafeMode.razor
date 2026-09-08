@@ -1,0 +1,119 @@
+@* The escalation ladder's last rung: no imagery, generous budgets, brand colour only.
+   It has to render cleanly for almost any input, because when it fails a human is called. *@
+
+<div class="sm-root">
+    <div class="sm-wash"></div>
+
+    <div class="sm-body">
+        @if (Model.HasText("eyebrow"))
+        {
+            <div class="sm-eyebrow" data-slot="eyebrow">@Model.Text("eyebrow")</div>
+        }
+
+        <h1 class="sm-headline" data-slot="headline">@Model.Text("headline")</h1>
+
+        @if (Model.HasText("subhead"))
+        {
+            <p class="sm-subhead" data-slot="subhead">@Model.Text("subhead")</p>
+        }
+    </div>
+
+    <div class="sm-foot">
+        @if (Model.HasText("cta"))
+        {
+            <span class="sm-cta" data-slot="cta">@Model.Text("cta")</span>
+        }
+
+        @if (Model.HasAsset("logo"))
+        {
+            <div class="sm-logo" data-asset-slot="logo" data-immutable="@Model.IsImmutable("logo").ToString().ToLowerInvariant()">
+                <img src="@Model.Asset("logo")" alt="" />
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .sm-root {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 58px 52px;
+        background: linear-gradient(155deg, var(--brand-primary) 0%, var(--brand-dark) 78%);
+    }
+
+    /* A single soft highlight keeps a flat brand fill from reading as a placeholder. */
+    .sm-wash {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(120% 70% at 12% 6%, rgba(255,255,255,.20), rgba(255,255,255,0) 62%);
+        pointer-events: none;
+    }
+
+    .sm-body { position: relative; margin-top: auto; }
+
+    .sm-eyebrow {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: rgba(255,255,255,.78);
+        margin-bottom: 18px;
+    }
+
+    .sm-headline {
+        font-family: var(--font-heading);
+        font-size: 58px;
+        line-height: 1.04;
+        letter-spacing: -.02em;
+        font-weight: 700;
+        margin: 0;
+        color: #fff;
+        text-wrap: balance;
+        /* Pixels, not em: an em cap would shrink with the font and defeat shrink-to-fit. */
+        max-height: 186px;
+        overflow: hidden;
+    }
+
+    .sm-subhead {
+        font-size: 22px;
+        line-height: 1.45;
+        color: rgba(255,255,255,.80);
+        margin: 20px 0 0;
+        max-width: 22em;
+        max-height: 96px;
+        overflow: hidden;
+    }
+
+    .sm-foot {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-top: 44px;
+    }
+
+    .sm-cta {
+        display: inline-block;
+        padding: 14px 26px;
+        border-radius: 999px;
+        background: #fff;
+        color: var(--brand-dark);
+        font-size: 18px;
+        font-weight: 600;
+        white-space: nowrap;
+        max-width: 68%;
+        overflow: hidden;
+    }
+
+    .sm-logo { width: 118px; height: 44px; opacity: .95; }
+    .sm-logo img { object-position: right center; }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public TemplateModel Model { get; set; } = default!;
+}

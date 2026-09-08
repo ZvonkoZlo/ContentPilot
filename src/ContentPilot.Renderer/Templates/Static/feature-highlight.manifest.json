@@ -1,0 +1,22 @@
+{
+  "templateId": "feature-highlight",
+  "version": 1,
+  "name": "Feature highlight",
+  "description": "Copy above a browser-chrome card holding the real product UI. For showing one capability clearly.",
+  "contentTypes": ["Static", "CarouselSlide"],
+  "aspectRatios": ["FourFive", "OneOne"],
+  "pillarAffinity": ["feature-highlight", "how-it-works", "announcement"],
+  "safeMode": false,
+  "supportsBackgroundImage": false,
+  "colorSchemes": ["LightOnDark", "DarkOnLight"],
+  "textSlots": [
+    { "id": "eyebrow",  "role": "Feature category",         "maxChars": 22, "maxLines": 1, "required": false },
+    { "id": "headline", "role": "What the feature does",    "maxChars": 52, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 32 },
+    { "id": "subhead",  "role": "The benefit, in one line", "maxChars": 88, "maxLines": 2, "required": false }
+  ],
+  "assetSlots": [
+    { "id": "screenshot", "kind": "ProductScreenshot", "required": true,  "immutable": true, "maxOcclusion": 0.02, "minWidthPx": 0,  "clearSpaceRatio": 0 },
+    { "id": "logo",       "kind": "Logo",              "required": false, "immutable": true, "maxOcclusion": 0.0,  "minWidthPx": 92, "clearSpaceRatio": 0.25 }
+  ],
+  "safeAreas": { "top": 0.06, "bottom": 0.12, "left": 0.05, "right": 0.05 }
+}

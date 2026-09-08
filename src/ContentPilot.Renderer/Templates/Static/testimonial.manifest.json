@@ -1,0 +1,23 @@
+{
+  "templateId": "testimonial",
+  "version": 1,
+  "name": "Testimonial",
+  "description": "Quote-led social proof. Needs no product screenshot, so it stays available for a thin asset library.",
+  "contentTypes": ["Static", "CarouselSlide"],
+  "aspectRatios": ["FourFive", "OneOne"],
+  "pillarAffinity": ["social-proof", "objection-handling"],
+  "safeMode": false,
+  "supportsBackgroundImage": false,
+  "colorSchemes": ["LightOnDark", "DarkOnLight"],
+  "textSlots": [
+    { "id": "rating",      "role": "Star row or score",     "maxChars": 12,  "maxLines": 1, "required": false },
+    { "id": "quote",       "role": "The customer words",    "maxChars": 150, "maxLines": 5, "required": true, "shrinkToFit": true, "minFontPx": 22 },
+    { "id": "attribution", "role": "Who said it",           "maxChars": 32,  "maxLines": 1, "required": true },
+    { "id": "role",        "role": "Their business or job", "maxChars": 40,  "maxLines": 1, "required": false }
+  ],
+  "assetSlots": [
+    { "id": "photo", "kind": "Photo", "required": false, "immutable": false, "maxOcclusion": 0.0, "minWidthPx": 0,  "clearSpaceRatio": 0 },
+    { "id": "logo",  "kind": "Logo",  "required": false, "immutable": true,  "maxOcclusion": 0.0, "minWidthPx": 96, "clearSpaceRatio": 0.25 }
+  ],
+  "safeAreas": { "top": 0.06, "bottom": 0.12, "left": 0.05, "right": 0.05 }
+}

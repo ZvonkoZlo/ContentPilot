@@ -1,0 +1,110 @@
+@* Hook-led: the claim carries the frame. Background is generated or brand gradient, and a
+   scrim guarantees the headline keeps its contrast whatever the background turns out to be. *@
+
+<div class="ho-root">
+    @if (Model.HasAsset("background"))
+    {
+        <div class="ho-bg" data-asset-slot="background">
+            <img src="@Model.Asset("background")" alt="" />
+        </div>
+    }
+    else
+    {
+        <div class="ho-bg ho-bg-fallback"></div>
+    }
+
+    <div class="ho-scrim"></div>
+
+    <div class="ho-top">
+        @if (Model.HasAsset("logo"))
+        {
+            <div class="ho-logo" data-asset-slot="logo" data-immutable="true">
+                <img src="@Model.Asset("logo")" alt="" />
+            </div>
+        }
+    </div>
+
+    <div class="ho-body">
+        @if (Model.HasText("eyebrow"))
+        {
+            <div class="ho-eyebrow" data-slot="eyebrow">@Model.Text("eyebrow")</div>
+        }
+
+        <h1 class="ho-hook" data-slot="hook">@Model.Text("hook")</h1>
+
+        @if (Model.HasText("cta"))
+        {
+            <span class="ho-cta" data-slot="cta">@Model.Text("cta")</span>
+        }
+    </div>
+</div>
+
+<style>
+    .ho-root { position: absolute; inset: 0; display: flex; flex-direction: column; }
+
+    .ho-bg { position: absolute; inset: 0; }
+    .ho-bg img { width: 100%; height: 100%; object-fit: cover; }
+
+    .ho-bg-fallback {
+        background:
+            radial-gradient(80% 60% at 20% 15%, color-mix(in srgb, var(--brand-accent) 65%, transparent), transparent 65%),
+            linear-gradient(165deg, var(--brand-primary), var(--brand-dark) 85%);
+    }
+
+    /* Not decoration: this is what makes the contrast check pass regardless of what the
+       image model produced behind it. */
+    .ho-scrim {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, rgba(8,10,12,.42) 0%, rgba(8,10,12,.05) 34%, rgba(8,10,12,.86) 100%);
+    }
+
+    .ho-top { position: relative; padding: 46px 46px 0; }
+    .ho-logo { width: 108px; height: 36px; }
+    .ho-logo img { object-position: left center; }
+
+    .ho-body { position: relative; margin-top: auto; padding: 0 46px 62px; }
+
+    .ho-eyebrow {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--brand-accent) 70%, #fff);
+        margin-bottom: 16px;
+    }
+
+    .ho-hook {
+        font-family: var(--font-heading);
+        font-size: 62px;
+        line-height: 1.02;
+        letter-spacing: -.025em;
+        font-weight: 700;
+        margin: 0;
+        color: #fff;
+        text-wrap: balance;
+        max-width: 11em;
+        max-height: 194px;
+        overflow: hidden;
+        text-shadow: 0 2px 24px rgba(0,0,0,.35);
+    }
+
+    .ho-cta {
+        display: inline-block;
+        margin-top: 26px;
+        padding: 13px 26px;
+        border-radius: 999px;
+        border: 1.5px solid rgba(255,255,255,.55);
+        color: #fff;
+        font-size: 17px;
+        font-weight: 600;
+        white-space: nowrap;
+        max-width: 90%;
+        overflow: hidden;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public TemplateModel Model { get; set; } = default!;
+}

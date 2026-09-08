@@ -1,0 +1,22 @@
+{
+  "templateId": "hook-overlay",
+  "version": 1,
+  "name": "Hook overlay",
+  "description": "A single strong claim over a generated or brand-gradient background, with a scrim that guarantees contrast.",
+  "contentTypes": ["Static", "ReelScene"],
+  "aspectRatios": ["FourFive", "OneOne", "NineSixteen"],
+  "pillarAffinity": ["problem-solution", "myth-busting", "announcement"],
+  "safeMode": false,
+  "supportsBackgroundImage": true,
+  "colorSchemes": ["LightOnDark"],
+  "textSlots": [
+    { "id": "eyebrow", "role": "Audience or category cue", "maxChars": 26, "maxLines": 1, "required": false },
+    { "id": "hook",    "role": "The scroll-stopping claim", "maxChars": 58, "maxLines": 3, "required": true, "shrinkToFit": true, "minFontPx": 36 },
+    { "id": "cta",     "role": "Call to action",            "maxChars": 24, "maxLines": 1, "required": false }
+  ],
+  "assetSlots": [
+    { "id": "background", "kind": "Background", "required": false, "immutable": false, "maxOcclusion": 1.0, "minWidthPx": 0,   "clearSpaceRatio": 0 },
+    { "id": "logo",       "kind": "Logo",       "required": false, "immutable": true,  "maxOcclusion": 0.0, "minWidthPx": 100, "clearSpaceRatio": 0.25 }
+  ],
+  "safeAreas": { "top": 0.06, "bottom": 0.12, "left": 0.05, "right": 0.05 }
+}

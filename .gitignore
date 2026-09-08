@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+.env
+artifacts/
+TestResults/
+*.received.*
+.playwright/
+artifacts/
