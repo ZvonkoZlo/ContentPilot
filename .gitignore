@@ -9,3 +9,6 @@ TestResults/
 *.received.*
 .playwright/
 artifacts/
+
+# Per-worktree agent identity (see AGENTS.md)
+.agent

@@ -2,7 +2,11 @@
 # Who owns what, right now.
 
 REPO=$(git rev-parse --show-toplevel)
-ME=$(git config --get contentpilot.agent || echo "<unset>")
+
+ME="${CONTENTPILOT_AGENT:-}"
+[ -z "$ME" ] && [ -f "$REPO/.agent" ] && ME=$(tr -d ' 	
+' < "$REPO/.agent")
+[ -z "$ME" ] && ME="<unset>"
 
 echo "You are: $ME"
 echo ""

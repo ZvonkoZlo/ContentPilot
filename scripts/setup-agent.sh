@@ -12,12 +12,22 @@ fi
 NAME=$1
 REPO=$(git rev-parse --show-toplevel)
 
-git config contentpilot.agent "$NAME"
+# Worktrees share .git/config, so identity cannot live there - it would be inherited by
+# every checkout. A git-ignored file in the working tree is per-worktree by construction.
+printf '%s
+' "$NAME" > "$REPO/.agent"
+
 git config core.hooksPath .githooks
 chmod +x "$REPO"/.githooks/* 2>/dev/null || true
 
-echo "Agent identity: $NAME"
+WHERE=$(git rev-parse --git-common-dir)
+TREE=$(git rev-parse --git-dir)
+KIND="main checkout"
+[ "$WHERE" != "$TREE" ] && KIND="linked worktree"
+
+echo "Agent identity: $NAME  (per-worktree, $KIND)"
 echo "Hooks:          .githooks (versioned, shared)"
+echo "Branch:         $(git rev-parse --abbrev-ref HEAD)"
 
 if [ -f "$REPO/.claims/$NAME.md" ]; then
     echo "Claim:          .claims/$NAME.md"

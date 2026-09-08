@@ -10,7 +10,14 @@
 set -e
 
 REPO=$(git rev-parse --show-toplevel)
-ME=$(git config --get contentpilot.agent || true)
+
+# Identity lives in a git-ignored .agent file in the working tree, not in git config.
+# Worktrees share .git/config, so a config-based identity set in one checkout is inherited
+# by every other one - two agents, one name, and the lane checks below silently stop
+# telling anyone apart. A file in the working tree is per-worktree by construction.
+ME="${CONTENTPILOT_AGENT:-}"
+[ -z "$ME" ] && [ -f "$REPO/.agent" ] && ME=$(tr -d ' 	
+' < "$REPO/.agent")
 
 if [ -z "$ME" ]; then
     echo "pre-commit: no agent identity set."

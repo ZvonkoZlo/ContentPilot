@@ -15,6 +15,32 @@ rules. Read it before your first edit.
 It records who you are and installs the pre-commit hook that enforces the rules below. A
 commit without it is a commit nobody checked.
 
+## Same folder, or your own?
+
+**Your own.** Use a git worktree — same repository, separate directory, separate branch,
+shared history:
+
+```bash
+git worktree add ../ContentPilot-codex -b phase-7-reels
+cd ../ContentPilot-codex
+./scripts/setup-agent.sh codex
+```
+
+Sharing one folder does not work, for four concrete reasons: a working tree can only have
+one branch checked out, so branch-per-phase collapses; `git add -A` would stage the other
+agent's half-finished edits; two `dotnet build` runs lock the same `bin/` and `obj/` files;
+and identity is per-directory, so the hook could not tell you apart.
+
+Worktrees also give you a free guard — git refuses to check out the same branch in two
+worktrees at once.
+
+Two things do not come along, because they are git-ignored, and that is intentional:
+
+- `.env` — you want your own anyway (different ports).
+- `.playwright/` (~700 MB Chromium). Either point at the existing copy with
+  `PLAYWRIGHT_BROWSERS_PATH=/absolute/path/to/ContentPilot/.playwright`, or reinstall it
+  in your worktree. Only Phase 7 and the renderer tests need it.
+
 ## Claim a phase before you write code
 
 Ownership lives in `.claims/<your-name>.md` — **one file per agent, so claiming can never
