@@ -1,0 +1,97 @@
+#!/bin/sh
+# Refuses a commit that reaches into another agent's lane.
+#
+# Ownership is read from .claims/*.md - one file per agent, so the record of who owns what
+# is itself never a source of conflict. Only claims marked `status: active` are enforced.
+#
+# Bypass with `git commit --no-verify` when you genuinely must. That is a decision to
+# explain to the other agent, not a shortcut.
+
+set -e
+
+REPO=$(git rev-parse --show-toplevel)
+ME=$(git config --get contentpilot.agent || true)
+
+if [ -z "$ME" ]; then
+    echo "pre-commit: no agent identity set."
+    echo "  Run: ./scripts/setup-agent.sh <your-name>"
+    exit 1
+fi
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$STAGED" ] && exit 0
+
+VIOLATIONS=""
+MIGRATION_BLOCK=""
+
+# --- Another agent's lane -----------------------------------------------------------
+for claim in "$REPO"/.claims/*.md; do
+    [ -e "$claim" ] || continue
+
+    name=$(basename "$claim" .md)
+    [ "$name" = "README" ] && continue
+    [ "$name" = "EXAMPLE" ] && continue
+    [ "$name" = "$ME" ] && continue
+
+    grep -qi '^status:[[:space:]]*active' "$claim" || continue
+
+    # Path list: the lines under "## paths", stopping at the next heading.
+    paths=$(sed -n '/^## paths/,/^## /p' "$claim" | grep -v '^## ' | grep -v '^[[:space:]]*$' || true)
+
+    for owned in $paths; do
+        for file in $STAGED; do
+            case "$file" in
+                "$owned"*)
+                    VIOLATIONS="$VIOLATIONS\n  $file  (owned by $name)"
+                    ;;
+            esac
+        done
+    done
+done
+
+# --- Migrations ---------------------------------------------------------------------
+# Two migrations generated in parallel branch from the same model snapshot and produce a
+# chain EF cannot linearise. Only the agent holding migrations:true may add one.
+NEW_MIGRATIONS=$(echo "$STAGED" | grep -i 'Persistence/Migrations/.*\.cs$' || true)
+
+if [ -n "$NEW_MIGRATIONS" ]; then
+    MINE="$REPO/.claims/$ME.md"
+
+    if [ ! -f "$MINE" ] || ! grep -qi '^migrations:[[:space:]]*true' "$MINE"; then
+        MIGRATION_BLOCK=$(echo "$NEW_MIGRATIONS" | sed 's/^/  /')
+    fi
+fi
+
+# --- Report -------------------------------------------------------------------------
+FAILED=0
+
+if [ -n "$VIOLATIONS" ]; then
+    echo ""
+    echo "pre-commit: these files belong to another agent's lane."
+    printf "%b\n" "$VIOLATIONS"
+    echo ""
+    echo "  Put the change in your handover notes in PARALLEL-WORK.md and let them land it."
+    FAILED=1
+fi
+
+if [ -n "$MIGRATION_BLOCK" ]; then
+    echo ""
+    echo "pre-commit: you are not the migration owner, but this commit adds a migration:"
+    echo "$MIGRATION_BLOCK"
+    echo ""
+    echo "  Write the entity and its IEntityTypeConfiguration, then stop. The migration"
+    echo "  owner generates one migration after the merge. See PARALLEL-WORK.md."
+    FAILED=1
+fi
+
+# --- Shared files: allowed, but worth a word ----------------------------------------
+SHARED=$(echo "$STAGED" | grep -E 'AppDbContext\.cs$|DependencyInjection\.cs$|ContentPilot\.Api/Program\.cs$' || true)
+
+if [ -n "$SHARED" ]; then
+    echo ""
+    echo "pre-commit: note - this commit touches shared files:"
+    echo "$SHARED" | sed 's/^/  /'
+    echo "  Append only. No reordering, no reformatting."
+fi
+
+exit $FAILED
