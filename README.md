@@ -7,6 +7,9 @@ agents in it — not as an agent system with a rendering step.
 The full technical plan lives in **[IMPLEMENTATION-PLAN.md](IMPLEMENTATION-PLAN.md)**.
 This README covers only how to run what exists today.
 
+Working alongside another agent? Read **[PARALLEL-WORK.md](PARALLEL-WORK.md)** first — it
+names the phases that can run side by side and the exact files where two agents collide.
+
 ## Status
 
 | Phase | Scope | State |
