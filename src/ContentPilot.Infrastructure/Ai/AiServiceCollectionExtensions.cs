@@ -1,4 +1,6 @@
+using ContentPilot.Application.Agents;
 using ContentPilot.Application.Ai;
+using ContentPilot.Application.Prompts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -43,6 +45,13 @@ public static class AiServiceCollectionExtensions
 
             return client;
         });
+
+        // The library is immutable once loaded, so one instance serves the process.
+        services.TryAddSingleton(_ => PromptLibrary.LoadEmbedded());
+        services.TryAddScoped<PromptRegistry>();
+        services.TryAddScoped<AgentExecutor>();
+
+        services.TryAddSingleton<ContentStrategistAgent>();
 
         return services;
     }
