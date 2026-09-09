@@ -27,6 +27,7 @@ public sealed class ModelProfileRegistry : IModelProfileRegistry
             pair => new ModelProfile
             {
                 Name = pair.Key,
+                Provider = pair.Value.Provider,
                 ModelId = string.IsNullOrWhiteSpace(pair.Value.ModelId)
                     ? throw new InvalidOperationException($"Profile '{pair.Key}' has no ModelId.")
                     : pair.Value.ModelId,

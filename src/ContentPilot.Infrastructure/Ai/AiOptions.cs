@@ -12,10 +12,11 @@ public sealed class AiOptions
     public const string SectionName = "Ai";
 
     /// <summary>
-    /// Never in configuration files. Supplied by environment variable in development and by
-    /// the platform's secret store in production.
+    /// Per-vendor credentials. Never in configuration files — supplied by environment
+    /// variable in development (see .env.example) and by the platform's secret store in
+    /// production. Only the vendors your profiles actually name need a key.
     /// </summary>
-    public string? ApiKey { get; set; }
+    public Dictionary<string, ProviderOptions> Providers { get; set; } = [];
 
     /// <summary>
     /// When false, any attempt to reach the provider throws. This is the default, so a
@@ -43,8 +44,18 @@ public sealed class AiOptions
     public Dictionary<string, ModelProfileOptions> Profiles { get; set; } = [];
 }
 
+public sealed class ProviderOptions
+{
+    public string? ApiKey { get; set; }
+
+    /// <summary>Overrides the vendor's endpoint. For a proxy or a regional endpoint.</summary>
+    public string? BaseUrl { get; set; }
+}
+
 public sealed class ModelProfileOptions
 {
+    public ModelProvider Provider { get; set; } = ModelProvider.Anthropic;
+
     [Required]
     public string ModelId { get; set; } = string.Empty;
 

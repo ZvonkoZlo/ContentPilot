@@ -13,6 +13,13 @@ public sealed record ModelProfile
 {
     public required string Name { get; init; }
 
+    /// <summary>
+    /// Which vendor runs this profile. Declared per profile rather than globally, so one
+    /// campaign can put the strategist on one vendor and the copywriter on another and
+    /// compare them on the same brief.
+    /// </summary>
+    public required ModelProvider Provider { get; init; }
+
     /// <summary>An exact model id. Never a date-suffixed variant.</summary>
     public required string ModelId { get; init; }
 
@@ -53,7 +60,19 @@ public sealed record ModelProfile
 }
 
 /// <summary>
-/// Mirrors the provider's effort levels without binding callers to a provider enum.
+/// The vendors with an adapter. Each one talks to its own official SDK — nothing is routed
+/// through another vendor's compatibility shim, which would quietly forfeit the features
+/// these agents depend on and misreport what actually ran.
+/// </summary>
+public enum ModelProvider
+{
+    Anthropic = 0,
+    OpenAi = 1,
+}
+
+/// <summary>
+/// Mirrors the providers' effort levels without binding callers to any vendor enum. Not
+/// every vendor supports every level; each adapter documents how it maps them.
 /// </summary>
 public enum ModelEffort
 {

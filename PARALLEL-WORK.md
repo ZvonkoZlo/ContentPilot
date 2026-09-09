@@ -210,9 +210,16 @@ configuration, skip the migration, tell me.
 **Shared files touched.** One `DbSet` block appended in `AppDbContext`, and one line in
 `DependencyInjection` calling `AddContentPilotAi`. Both append-only, nothing reordered.
 
-**New package.** `Anthropic` 12.46.0 in `ContentPilot.Infrastructure`. Note: that release
-has no `Effort.XHigh` — the abstraction keeps the level and maps it down to `High`, which is
-the conservative direction. Remove the branch when the SDK carries it.
+**New packages.** `Anthropic` 12.46.0 and `OpenAI` 2.13.0, both in
+`ContentPilot.Infrastructure`. Note: the Anthropic release has no `Effort.XHigh` — the
+abstraction keeps the level and maps it down to `High`, the conservative direction. Remove
+the branch when the SDK carries it.
+
+**Two providers, chosen per profile.** Each vendor has its own adapter on its own official
+SDK, behind one `ILanguageModelClient`; a router dispatches on the profile's `Provider`.
+Neither vendor is routed through the other's compatibility shim. Keys are environment-only
+(`Ai__Providers__<Vendor>__ApiKey`) and `Ai:Enabled` is false by default, so nothing can
+spend until someone opts in.
 
 **Coming next in this lane.** `Infrastructure/Ai/` (client plus cost, budget, retry and
 cassette middleware), `Application/Prompts/`, `Application/Agents/`,

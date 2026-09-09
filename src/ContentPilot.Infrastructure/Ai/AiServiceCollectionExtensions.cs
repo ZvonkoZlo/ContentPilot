@@ -12,7 +12,8 @@ namespace ContentPilot.Infrastructure.Ai;
 /// <item>budget — refuses before anything is spent, and records what was</item>
 /// <item>cassette — replays without reaching the provider or the ledger</item>
 /// <item>resilience — retries transport failures, never schema ones</item>
-/// <item>the provider itself</item>
+/// <item>routing — picks the adapter the profile names</item>
+/// <item>the vendor adapter itself</item>
 /// </list>
 /// Budget sits outside cassettes so a replay costs nothing and never pollutes the ledger,
 /// and outside retries so three attempts at one call cannot each pass a check the first
@@ -29,10 +30,12 @@ public static class AiServiceCollectionExtensions
 
         services.TryAddSingleton<IModelProfileRegistry, ModelProfileRegistry>();
         services.TryAddSingleton<AnthropicLanguageModelClient>();
+        services.TryAddSingleton<OpenAiLanguageModelClient>();
+        services.TryAddSingleton<ProviderRoutingLanguageModelClient>();
 
         services.TryAddScoped<ILanguageModelClient>(provider =>
         {
-            ILanguageModelClient client = provider.GetRequiredService<AnthropicLanguageModelClient>();
+            ILanguageModelClient client = provider.GetRequiredService<ProviderRoutingLanguageModelClient>();
 
             client = ActivatorUtilities.CreateInstance<ResilientLanguageModelClient>(provider, client);
             client = ActivatorUtilities.CreateInstance<CassetteLanguageModelClient>(provider, client);

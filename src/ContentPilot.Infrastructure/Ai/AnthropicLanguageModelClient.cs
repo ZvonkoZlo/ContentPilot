@@ -40,7 +40,8 @@ public sealed class AnthropicLanguageModelClient : ILanguageModelClient
             return;
         }
 
-        var apiKey = _options.ApiKey ?? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+        var apiKey = _options.Providers.GetValueOrDefault("Anthropic")?.ApiKey
+            ?? Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
 
         _client = string.IsNullOrWhiteSpace(apiKey)
             ? new AnthropicClient()
@@ -57,6 +58,13 @@ public sealed class AnthropicLanguageModelClient : ILanguageModelClient
         }
 
         var profile = _profiles.Get(request.Profile);
+
+        if (profile.Provider != ModelProvider.Anthropic)
+        {
+            throw new InvalidOperationException(
+                $"Profile '{profile.Name}' is configured for {profile.Provider} but reached the " +
+                "Anthropic adapter. This is a routing bug, not a configuration error.");
+        }
         var started = Stopwatch.GetTimestamp();
 
         var parameters = new MessageCreateParams

@@ -150,6 +150,59 @@ Dimensions are read from the header before decoding, so a decompression bomb is 
 while it is still small. SVG is sanitised through an allow-list, rasterised, and the vector
 original is discarded — it would otherwise be XML loaded into the renderer's browser.
 
+## Language models
+
+Nothing can spend a cent until you add a key and flip one switch.
+
+```bash
+cp .env.example .env        # then fill in the key for the provider you want
+```
+
+```ini
+Ai__Providers__Anthropic__ApiKey=sk-ant-...     # console.anthropic.com/settings/keys
+Ai__Providers__OpenAi__ApiKey=sk-...            # platform.openai.com/api-keys
+Ai__Enabled=true
+```
+
+You only need the key for the provider your profiles actually name.
+
+### Choosing a provider
+
+**Per profile, not per deployment.** Each agent declares its own vendor in
+`appsettings.json`, so the strategist can run on one and the copywriter on another:
+
+```json
+"copywriter": {
+  "Provider": "OpenAi",
+  "ModelId": "gpt-5",
+  "InputPricePerMillion": 125000000,
+  "OutputPricePerMillion": 1000000000
+}
+```
+
+Nothing else changes — same prompts, same validators, same budget, same cassettes. That is
+what makes a side-by-side comparison of two models honest: identical brief, identical
+checks, identical week.
+
+Each vendor has its own adapter on its own official SDK. Neither is routed through the
+other's compatibility shim, which would quietly forfeit schema-enforced output and
+misreport which model actually ran.
+
+### What the layer guarantees
+
+| Concern | How |
+|---|---|
+| Output shape | A JSON Schema goes in and is enforced by the provider. There is no "give me some text" method |
+| Spend | Refused **before** the call, not reported after. A budget enforced afterwards is a report |
+| Cost accuracy | Integer micro-cents, priced from rates snapshotted onto every ledger row |
+| Retries | Transport failures only. A schema rejection means the prompt is wrong, and retrying costs money to fail the same way |
+| Tests without a key | Cassettes replay recorded responses. A missing cassette is an error, never a silent live call |
+
+Prompts are embedded files with front matter, not string literals, so a change is a
+reviewable diff and any past output traces back to exact text by hash. Rendering is strict
+in both directions: a missing variable would otherwise send the model the literal
+`{{brand_block}}`, which no model complains about and every reader misreads as working.
+
 ## The renderer
 
 ```bash

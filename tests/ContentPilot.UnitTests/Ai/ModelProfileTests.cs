@@ -14,6 +14,7 @@ public sealed class ModelProfileTests
     private static readonly ModelProfile Opus = new()
     {
         Name = "strategist",
+        Provider = ModelProvider.Anthropic,
         ModelId = "claude-opus-5",
         // $5.00 and $25.00 per million tokens, in micro-cents.
         InputPricePerMillion = 500_000_000,
@@ -78,6 +79,28 @@ public sealed class ModelProfileTests
 
         ex.Message.ShouldContain("copywriter");
         ex.Message.ShouldContain("strategist");
+    }
+
+    [Fact]
+    public void A_profile_defaults_to_anthropic_but_can_name_another_vendor()
+    {
+        var registry = new ModelProfileRegistry(Options.Create(new AiOptions
+        {
+            Profiles = new()
+            {
+                ["strategist"] = new ModelProfileOptions { ModelId = "claude-opus-5" },
+                ["copywriter"] = new ModelProfileOptions
+                {
+                    Provider = ModelProvider.OpenAi,
+                    ModelId = "gpt-5",
+                },
+            },
+        }));
+
+        // Per profile, not per deployment: comparing two vendors on the same brief is only
+        // honest if everything except the model stays the same.
+        registry.Get("strategist").Provider.ShouldBe(ModelProvider.Anthropic);
+        registry.Get("copywriter").Provider.ShouldBe(ModelProvider.OpenAi);
     }
 
     [Fact]
