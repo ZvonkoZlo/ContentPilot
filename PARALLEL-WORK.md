@@ -203,8 +203,16 @@ is a deliberate departure from IMPLEMENTATION-PLAN.md §18, which proposed build
 adaptive thinking and effort, which are exactly what the agents depend on. Swapping
 providers remains one adapter.
 
-**Migrations pending.** The entities above have no migration yet. Anyone adding an entity
-before that lands: add the configuration, skip the migration, tell me.
+**Migration landed.** `ContentAndObservability` covers content_campaigns, content_items,
+content_history, agent_runs, cost_entries and prompt_versions. From here on: add your
+configuration, skip the migration, tell me.
+
+**Shared files touched.** One `DbSet` block appended in `AppDbContext`, and one line in
+`DependencyInjection` calling `AddContentPilotAi`. Both append-only, nothing reordered.
+
+**New package.** `Anthropic` 12.46.0 in `ContentPilot.Infrastructure`. Note: that release
+has no `Effort.XHigh` — the abstraction keeps the level and maps it down to `High`, which is
+the conservative direction. Remove the branch when the SDK carries it.
 
 **Coming next in this lane.** `Infrastructure/Ai/` (client plus cost, budget, retry and
 cassette middleware), `Application/Prompts/`, `Application/Agents/`,

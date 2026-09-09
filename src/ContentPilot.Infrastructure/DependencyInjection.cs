@@ -2,6 +2,7 @@ using Amazon.Runtime;
 using Amazon.S3;
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Application.Capabilities;
+using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Assets;
 using ContentPilot.Infrastructure.Branding;
 using ContentPilot.Application.Jobs;
@@ -80,6 +81,8 @@ public static class DependencyInjection
         services.TryAddScoped<IBrandBrainReader, BrandBrainReader>();
         services.TryAddScoped<AssetLibrary>();
         services.TryAddScoped<GoldenTenantSeeder>();
+
+        services.AddContentPilotAi(configuration);
 
         return services;
     }
