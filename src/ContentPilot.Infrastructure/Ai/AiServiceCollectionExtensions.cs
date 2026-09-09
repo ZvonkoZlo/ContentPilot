@@ -52,6 +52,7 @@ public static class AiServiceCollectionExtensions
         services.TryAddScoped<AgentExecutor>();
 
         services.TryAddSingleton<ContentStrategistAgent>();
+        services.TryAddScoped<Branding.ContentMemoryReader>();
 
         return services;
     }

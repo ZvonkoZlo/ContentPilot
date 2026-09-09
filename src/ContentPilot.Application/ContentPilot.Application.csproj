@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ContentPilot.Domain\ContentPilot.Domain.csproj" />
+    <ProjectReference Include="..\ContentPilot.Rendering.Contracts\ContentPilot.Rendering.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

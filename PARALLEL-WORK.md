@@ -225,6 +225,10 @@ spend until someone opts in.
 it `String.Normalize` returns the string unchanged with no error, so any accent folding
 built on Unicode normalisation silently does nothing. Use an explicit table.
 
+**New reference.** `ContentPilot.Application` now references
+`ContentPilot.Rendering.Contracts` so template eligibility can be computed from manifests.
+Read-only: I have added nothing to that project and will not touch it while phase 7 is live.
+
 **Coming next in this lane.** `Infrastructure/Ai/` (client plus cost, budget, retry and
 cassette middleware), `Application/Prompts/`, `Application/Agents/`,
 `Application/ContentMemory/`.

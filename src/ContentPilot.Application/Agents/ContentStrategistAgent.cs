@@ -57,20 +57,35 @@ public sealed class ContentStrategistAgent : IAgent<StrategistInput, WeeklyPlan>
         });
 
     /// <summary>
-    /// Shown as a compact list rather than full posts. The strategist needs to know what
-    /// ground is already covered, not to re-read a month of captions — and every token
-    /// spent here is one not spent on the brief.
+    /// How many past items the model is shown. The novelty check carries a far longer tail
+    /// of hashes, because those are eight bytes each and cost nothing; prose in a prompt is
+    /// not, and every token spent on history is one not spent on the brief.
+    /// </summary>
+    public const int RecentContentShown = 12;
+
+    /// <summary>
+    /// A compact list, not full posts. The strategist needs to know what ground is already
+    /// covered, not to re-read a month of captions.
+    /// <para>
+    /// Entries whose text was dropped for the novelty tail are skipped rather than printed
+    /// as blanks — the caller may legitimately pass more than is meant to be shown.
+    /// </para>
     /// </summary>
     private static string FormatRecentContent(IReadOnlyList<RecentContent> recent)
     {
-        if (recent.Count == 0)
+        var shown = recent
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Topic))
+            .Take(RecentContentShown)
+            .ToArray();
+
+        if (shown.Length == 0)
         {
             return "Nothing has been published yet. This is the first week.";
         }
 
         var builder = new StringBuilder();
 
-        foreach (var entry in recent)
+        foreach (var entry in shown)
         {
             builder.Append("- ")
                 .Append(entry.ApprovedAt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
