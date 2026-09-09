@@ -221,6 +221,10 @@ Neither vendor is routed through the other's compatibility shim. Keys are enviro
 (`Ai__Providers__<Vendor>__ApiKey`) and `Ai:Enabled` is false by default, so nothing can
 spend until someone opts in.
 
+**Trap worth knowing.** `Directory.Build.props` sets `InvariantGlobalization=true`. Under
+it `String.Normalize` returns the string unchanged with no error, so any accent folding
+built on Unicode normalisation silently does nothing. Use an explicit table.
+
 **Coming next in this lane.** `Infrastructure/Ai/` (client plus cost, budget, retry and
 cassette middleware), `Application/Prompts/`, `Application/Agents/`,
 `Application/ContentMemory/`.
