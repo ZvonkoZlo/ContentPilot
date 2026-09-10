@@ -6,6 +6,13 @@ entry point for **Claude Code**; agents that read `AGENTS.md` (Codex among them)
 **[PARALLEL-WORK.md](PARALLEL-WORK.md)** — the ownership map, the collision points, and the
 rules. Read it before your first edit.
 
+## Before you go looking through the tree
+
+[AGENT-MAP.md](AGENT-MAP.md) is the index: which project holds what, where every abstraction
+lives, which test suite to run, and — most useful — the line ranges of every section and
+phase of `IMPLEMENTATION-PLAN.md`, which is 113 KB and must be read with `sed -n`, never
+whole. Check the map before grepping; keep it current when you finish a phase.
+
 ## Run this once, before anything else
 
 ```bash
