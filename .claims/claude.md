@@ -4,7 +4,7 @@ phase: 5
 branch: main
 status: active
 migrations: true
-updated: 2026-09-10
+updated: 2026-09-11
 ---
 
 ## paths
@@ -33,20 +33,25 @@ tests/ContentPilot.UnitTests/Domain/
 
 **Phase 4 landed** (deterministic QA) — see PARALLEL-WORK.md.
 
-**Phase 5 partially landed** (orchestrator policy, not yet wired to a worker):
+**Phase 5 partially landed** (orchestrator policy, still not wired to a worker):
 `WorkflowRun`/`WorkflowStep`/`BudgetReservation` in `Domain/Workflow/`, `ContentRevision` in
 `Domain/Content/`, migration `Workflow` landed. `Application/Orchestration/` has
 `ItemStateMachine` (§7 transition legality), `RemediationRouter` (§8 finding→step routing
-and escalation ladder), `BudgetGuard` (§24 reserve-then-commit) — all pure, all unit tested,
-none of it called from anywhere yet. Full detail in PARALLEL-WORK.md's phase 5 section,
-including exactly what is still missing before "generate week" runs unattended.
+and escalation ladder), `BudgetGuard` (§24 reserve-then-commit), and now
+`OrchestratorCore.Decide` — the `(WorkflowRun, WorkflowStep[]) => NextAction` function §6
+names directly, tying the other three into one decision. All of it is pure and unit tested;
+none of it is called from anywhere yet. Full detail in PARALLEL-WORK.md's phase 5 sections.
 
 **Still to do in this lane, in the order that makes sense:**
-1. The core loop itself (§6's numbered list) — lease a `WorkflowRun`, decide the next
-   action, execute one step, persist + transition + enqueue in one transaction.
+1. The caller: lease a `WorkflowRun`, call `OrchestratorCore.Decide`, execute the named
+   step, persist the step/transition/next-job enqueue in one transaction. This is the only
+   remaining piece of §6's own numbered list.
 2. `IJobQueue` job type(s) for `ContentItemWorkflow`; wiring the existing
-   `ContentStrategistAgent`, `DeterministicQaSuite`, and a renderer HTTP client together
-   through the steps `ItemStateMachine` already knows the shape of.
+   `ContentStrategistAgent`, `DeterministicQaSuite`, and a renderer HTTP client (does not
+   exist yet) together through the steps `ItemStateMachine` already knows the shape of.
+   A copywriter agent for the Writing step and spec assembly for SpecAssembly do not exist
+   either — Directing (via `TemplateSelector`) and Validating (via `DeterministicQaSuite`)
+   are the only steps with a real executor ready to call today.
 3. `CampaignWorkflow` (campaign-level: plan → fan out items → package).
 4. The manual trigger endpoint and the Hangfire weekly cron.
 5. Image generation has no client at all yet — needed before `AssetGeneration` can do

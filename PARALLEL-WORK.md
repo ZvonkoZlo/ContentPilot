@@ -357,3 +357,19 @@ re-deriving the policy they encode.
 
 285 unit tests in the suite are green, 68 of them new to this phase;
 architecture, integration and workflow suites unaffected.
+
+### Phase 5 continued — the core loop's decision function (`claude`)
+
+`OrchestratorCore.Decide` in `Application/Orchestration/` is the `(WorkflowRun,
+WorkflowStep[]) => NextAction` function §6 names directly — the piece that turns
+`ItemStateMachine`, `RemediationRouter` and `BudgetGuard` from three separate policies into
+one decision. It is still pure: no database, no queue, no model. The guards run in order —
+deadline, step cap, budget (computed by the caller from the ledger, the one thing this
+function cannot do for itself) — then Approved short-circuits to `Complete`, then any other
+step with no QA report yet is simply `ExecuteStep(currentStep)`. The only real branching is
+after Validating has produced a `QaReport`: Pass completes the item, otherwise the worst
+finding is handed to `RemediationRouter` and its outcome is passed straight through.
+
+**Still not built:** the caller. Nothing leases a `WorkflowRun`, calls `Decide`, executes
+the named step, or persists the result in a transaction yet — that is the job handler
+described in the previous phase-5 note, and `Decide` is what it will call once it exists.

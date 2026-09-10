@@ -115,12 +115,14 @@ QualityConfigurations.cs`. Calibration harness and threshold rationale:
 **Orchestration (policy only — no worker loop yet)** — `Application/Orchestration/`
 (`ItemStateMachine` — legal §7 item transitions and loop-safety; `RemediationRouter` —
 §8 finding-code-to-restart-step table plus the escalation ladder; `BudgetGuard` —
-§24 reserve-then-commit). `Domain/Workflow/` (`WorkflowRun` — attempt counters and
-deadline read from `Domain.Tenancy.TenantLimits`, `WorkflowStep` — append-only,
-idempotency key `(RunId, StepName, Attempt)`, `BudgetReservation`); `ContentRevision`
-lives in `Domain/Content/` next to `ContentItem`. EF configuration in
+§24 reserve-then-commit; `OrchestratorCore.Decide` — the `(WorkflowRun, WorkflowStep[]) =>
+NextAction` function §6 names directly, combining the other three into one decision).
+`Domain/Workflow/` (`WorkflowRun` — attempt counters and deadline read from
+`Domain.Tenancy.TenantLimits`, `WorkflowStep` — append-only, idempotency key
+`(RunId, StepName, Attempt)`, `BudgetReservation`); `ContentRevision` lives in
+`Domain/Content/` next to `ContentItem`. EF configuration in
 `Infrastructure/Persistence/Configurations/WorkflowConfigurations.cs`. Nothing yet calls
-any of this from a job — see PARALLEL-WORK.md's phase 5 section for what is still missing.
+`Decide` from a job — see PARALLEL-WORK.md's phase 5 sections for what is still missing.
 
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation
