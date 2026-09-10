@@ -134,13 +134,17 @@ a job — see PARALLEL-WORK.md's phase 5 sections for what is still missing.
 `Infrastructure/Branding/BrandBrainReader.cs`; seed `GoldenTenantSeeder.cs`; assets
 `AssetLibrary.cs` and `Infrastructure/Assets/` (`ImageIngestor`, `SvgSanitizer`).
 
-**Entities** — `Domain/Tenancy/Tenant`; `Domain/Branding/` (`Brand`, `BrandProfile` with
-`ToneOfVoice` / `VisualIdentity` / `Messaging`, `BrandProfileVersion`, `BrandAsset`,
-`ProductFact`, `AudiencePersona`, `ContentPreferences`, `IndustryProfile`);
-`Domain/Content/` (`ContentCampaign`, `ContentItem`, `ContentHistoryEntry`);
+**Entities** — `Domain/Tenancy/` (`Tenant`, `TenantLimits` — every attempt/cost/deadline
+ceiling in the system, tuned per tenant, never hard-coded); `Domain/Branding/` (`Brand`,
+`BrandProfile` with `ToneOfVoice` / `VisualIdentity` / `Messaging`, `BrandProfileVersion`,
+`BrandAsset`, `ProductFact`, `AudiencePersona`, `ContentPreferences`, `IndustryProfile`);
+`Domain/Content/` (`ContentCampaign`, `ContentItem`, `ContentHistoryEntry`, `ContentRevision`
+— the attempt journal, `TemplateVersion` — a pinned manifest snapshot, `CreativeSpec` — the
+immutable per-attempt render input, `ContentAsset` — every attempt's rendered output);
 `Domain/Observability/` (`AgentRun`, `CostEntry`, `PromptVersion`); `Domain/Quality/`
-(`QualityReview`, see above). EF configurations mirror those under
-`Infrastructure/Persistence/Configurations/`.
+(`QualityReview`, see above); `Domain/Workflow/` (see Orchestration, above). EF
+configurations mirror those under `Infrastructure/Persistence/Configurations/`
+(`CreativeConfigurations.cs` for the three new ones).
 
 **Rendering contracts** — `TemplateManifest.cs` (`TemplateManifest`, `TextSlot`, `AssetSlot`,
 `SafeAreas`, `AspectRatio`, `ColorScheme`, `TemplateContentType`); `RenderContracts.cs`

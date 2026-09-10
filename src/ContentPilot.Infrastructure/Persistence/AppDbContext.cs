@@ -42,6 +42,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
 
     public DbSet<ContentHistoryEntry> ContentHistory => Set<ContentHistoryEntry>();
 
+    public DbSet<TemplateVersion> TemplateVersions => Set<TemplateVersion>();
+
+    public DbSet<CreativeSpec> CreativeSpecs => Set<CreativeSpec>();
+
+    public DbSet<ContentAsset> ContentAssets => Set<ContentAsset>();
+
     public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
 
     public DbSet<CostEntry> CostEntries => Set<CostEntry>();

@@ -399,3 +399,24 @@ the `DeterministicQaInput` the QA suite already accepts — both are glue, not n
 neither is written. `TenantLimits`, `ItemStateMachine`, `RemediationRouter`, `BudgetGuard`,
 `OrchestratorCore`, `DeterministicQaSuite` and now `IRendererClient` are all the pieces the
 core loop needs; nothing yet holds them in one hand.
+
+### Phase 5 continued — the three entities the pipeline was missing (`claude`)
+
+`TemplateVersion`, `CreativeSpec` and `ContentAsset` (all `Domain/Content/`) are the last
+domain entities §12 calls for that did not exist yet. Migration `CreativePipeline` landed.
+
+`TemplateVersion` is a snapshot of one manifest fetched from the renderer via
+`IRendererClient`, keyed unique on `(TemplateId, Version)` — a spec pins this row rather
+than the live manifest, so a template redesign cannot retroactively make an old render
+inexplicable. `CreativeSpec` is the exact `RenderImageRequest` an attempt sent, serialized
+and hashed, one immutable row per `(ContentItemId, Attempt)`. `ContentAsset` is the rendered
+output — every attempt's, not only the promoted one, because promoting the best attempt on
+exhaustion only works if the earlier attempts' assets still exist to point at.
+
+With these three plus everything from the two notes above, the domain model for the item
+pipeline is complete. **What is still pure glue, not policy, and still not written:** the
+code that assembles a `CreativeSpec` from a template + brief + brand tokens (SpecAssembly),
+a copywriter agent for Writing, and the job handler that leases a `WorkflowRun`, calls
+`OrchestratorCore.Decide`, executes the named step against these entities, and persists the
+result in one transaction. Every policy and every entity the loop needs now exists; nothing
+yet holds them in one hand.
