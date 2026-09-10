@@ -45,9 +45,9 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 0 — Foundations, walking skeleton | 1166 | done |
 | 1 — Brand Brain and asset library | 1186 | done |
 | 2 — Renderer and static templates | 1206 | done |
-| 3 — Text agents and the LLM layer | 1227 | in progress (`claude`) |
-| 4 — Deterministic QA and fidelity calibration | 1248 | **next, unclaimed** |
-| 5 — Orchestrator, retries, self-correction | 1266 | unclaimed |
+| 3 — Text agents and the LLM layer | 1227 | done |
+| 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
+| 5 — Orchestrator, retries, self-correction | 1266 | **next, unclaimed** |
 | 6 — Visual QA and Marketing QA | 1285 | unclaimed |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |
@@ -102,6 +102,16 @@ persistence: `Infrastructure/Ai/AgentExecutor.cs` with `AgentContext`. Prompts:
 **Content memory** — `Application/ContentMemory/SimHash.cs`;
 `Infrastructure/Branding/ContentMemoryReader.cs`.
 
+**Quality (gate 1)** — `Domain/Quality/` (`QaFinding`, `QaFindingCode` — append-only and
+grouped by hundreds; `QaFindingCodes.GateFor` says which gate owns which code —,
+`QaSeverity`, `QaGate`, `QaOutcome`, `QualityReview`). `Application/Quality/`
+(`DeterministicQaSuite`, `DeterministicQaInput`/`DeterministicQaOptions`, `QaReport`,
+`Checks/` — `LayoutChecks`, `ContrastCheck`, `LogoChecks`, `FidelityChecks`,
+`FileSanityChecks`). EF configuration in `Infrastructure/Persistence/Configurations/
+QualityConfigurations.cs`. Calibration harness and threshold rationale:
+`tests/ContentPilot.RendererTests/FidelityCalibrationTests.cs`, regenerating
+`artifacts/fidelity-calibration.md` (git-ignored) on every run.
+
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation
 `Infrastructure/Branding/BrandBrainReader.cs`; seed `GoldenTenantSeeder.cs`; assets
@@ -111,8 +121,9 @@ persistence: `Infrastructure/Ai/AgentExecutor.cs` with `AgentContext`. Prompts:
 `ToneOfVoice` / `VisualIdentity` / `Messaging`, `BrandProfileVersion`, `BrandAsset`,
 `ProductFact`, `AudiencePersona`, `ContentPreferences`, `IndustryProfile`);
 `Domain/Content/` (`ContentCampaign`, `ContentItem`, `ContentHistoryEntry`);
-`Domain/Observability/` (`AgentRun`, `CostEntry`, `PromptVersion`). EF configurations mirror
-those under `Infrastructure/Persistence/Configurations/`.
+`Domain/Observability/` (`AgentRun`, `CostEntry`, `PromptVersion`); `Domain/Quality/`
+(`QualityReview`, see above). EF configurations mirror those under
+`Infrastructure/Persistence/Configurations/`.
 
 **Rendering contracts** — `TemplateManifest.cs` (`TemplateManifest`, `TextSlot`, `AssetSlot`,
 `SafeAreas`, `AspectRatio`, `ColorScheme`, `TemplateContentType`); `RenderContracts.cs`

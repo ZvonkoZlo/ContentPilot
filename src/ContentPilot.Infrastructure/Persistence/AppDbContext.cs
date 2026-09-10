@@ -4,6 +4,7 @@ using ContentPilot.Application.Abstractions;
 using ContentPilot.Domain.Branding;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Observability;
+using ContentPilot.Domain.Quality;
 using ContentPilot.Domain.Common;
 using ContentPilot.Domain.Tenancy;
 using ContentPilot.Infrastructure.Jobs;
@@ -48,6 +49,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     public DbSet<PromptVersion> PromptVersions => Set<PromptVersion>();
 
     public DbSet<Job> Jobs => Set<Job>();
+
+    /// <summary>One row per QA gate per attempt, deterministic gates included.</summary>
+    public DbSet<QualityReview> QualityReviews => Set<QualityReview>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

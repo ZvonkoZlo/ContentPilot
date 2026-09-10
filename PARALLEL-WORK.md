@@ -259,3 +259,45 @@ That enum is the load-bearing part: if findings can be free text, remediation ha
 decided by another model call, and the orchestrator loses control of the loop.
 
 The `QualityReview` entity needs a migration — coordinate.
+
+### Phase 4 — deterministic QA (landed, `claude`)
+
+`QaFindingCode` and `QaSeverity`/`QaGate`/`QaOutcome` are in `Domain/Quality/QaFinding.cs` —
+**append-only from now on**, the same rule as the rendering contracts. It is grouped by
+hundreds (1xx layout, 2xx logo, 3xx fidelity, 4xx file sanity, 5xx video — reserved for
+phase 7, 6xx visual judgement, 7xx marketing judgement) and `QaFindingCodes.GateFor` is the
+one place that knows which gate owns which code; `QualityReview` refuses to persist a
+finding filed by the wrong gate, so a vision model claiming text overflow is a thrown
+exception, not a silent possibility.
+
+**Migration landed.** `QualityReviews` adds `quality_reviews`, one row per gate per attempt,
+unique on `(ContentItemId, Attempt, Gate)`. Findings are stored as jsonb with enum names
+rather than numbers, since these rows outlive every deployment that produced them.
+
+**`DeterministicQaSuite`** (`Application/Quality/`) is gate 1: pure, exhaustive (never
+short-circuits on the first blocking defect — the remediation router wants the whole
+picture of an attempt), and it runs entirely against the renderer's existing `RenderReport`
+and `/compare` output. No image ever reaches it. `QaReport.Outcome` is derived from the
+worst finding severity, never set independently, so a report cannot claim Pass while
+carrying a Blocking finding.
+
+**Calibration harness landed** in `tests/ContentPilot.RendererTests/FidelityCalibrationTests.cs`
+— 2 templates with immutable screenshots × their aspect ratios × 5 source resolutions,
+clean + 5 injected mutations + 1 JPEG-compression control, 140 comparisons. Regenerates
+`artifacts/fidelity-calibration.md` (git-ignored, like the rest of `artifacts/`) on every
+run: distributions, separation, and why each `FidelityThresholds.Default` number is where
+it is. One real finding from widening the corpus past Phase 2's single fixture: a sigma-2
+blur on a near-1:1 source (small screenshot, mild downscale) is genuinely hard to
+distinguish from a clean render — the mutation now uses sigma 3, which is where §10's own
+reference table puts a clean failure. Worth knowing before anyone tightens the SSIM pass
+line expecting sigma-2 blurs to be caught too.
+
+**Not yet covered by the corpus**, written into the report so it travels with the numbers:
+real (non-synthetic) screenshots, logos (verified geometrically, not by comparison — a
+heavily downscaled wordmark sits in the review band even when intact, the same effect
+Phase 2 noted for poster-like art), and carousel/reel keyframes.
+
+**Coming next in this lane.** Phase 4 is otherwise done — no orchestrator, no remediation
+router; those are Phase 5. `QaFinding`/`QaGate` are the vocabulary Phase 5's remediation
+router and Phase 6's VisualQA/MarketingQA agents both consume; anyone starting Phase 6 will
+want the 6xx/7xx bands and `QaFindingCodes.GateFor` to enforce which gate can say what.
