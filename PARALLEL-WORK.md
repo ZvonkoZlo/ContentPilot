@@ -301,3 +301,59 @@ Phase 2 noted for poster-like art), and carousel/reel keyframes.
 router; those are Phase 5. `QaFinding`/`QaGate` are the vocabulary Phase 5's remediation
 router and Phase 6's VisualQA/MarketingQA agents both consume; anyone starting Phase 6 will
 want the 6xx/7xx bands and `QaFindingCodes.GateFor` to enforce which gate can say what.
+
+### Phase 5 — orchestrator core (partial, `claude`)
+
+Landed the deterministic, unit-testable core of §6–8: the pieces that decide what happens
+next, with no job queue or worker loop wired up yet. Read this section before assuming
+"generate week" runs end to end — it does not, yet.
+
+**Entities and migration landed.** `Domain/Workflow/` gets `WorkflowRun` (the orchestrator's
+own bookkeeping — three attempt counters, step cap, wall-clock deadline, a defense-in-depth
+lease — kept apart from `ContentCampaign.Status`/`ContentItem.Status` on purpose: business
+status answers "what is this right now", a run answers "how many times have we tried and
+against what deadline"), `WorkflowStep` (append-only, the idempotency key from §6 is
+`(WorkflowRunId, StepName, Attempt)`), `BudgetReservation` (reserve-then-commit from §24).
+`ContentRevision` went into `Domain/Content/` instead, next to `ContentItem` — it is the
+attempt journal the entity diagram groups there. Migration `Workflow` landed.
+
+**One thing worth knowing:** `WorkflowRun`'s ceilings are read from `TenantLimits` at
+construction (already existed from Phase 0 with exactly the plan's defaults — 3 quality
+attempts, 40 steps, 45 minutes) rather than hard-coded. A run keeps the limits it started
+with even if the tenant's configuration changes mid-flight, which is deliberate.
+
+**`Application/Orchestration/`** (pure, no persistence — the architecture test already
+forbids `Application.Agents` from reaching it, so agents cannot decide what happens next
+even by accident):
+
+- `ItemStateMachine` — the legality of every §7 item-level transition, plus
+  `IsValidRemediationTarget`, the loop-safety rule that a restart can never target a step
+  later than the one that raised the finding.
+- `RemediationRouter` — the §8 finding-code → restart-step table (adapted to
+  `Domain.Quality.QaFindingCode`'s names, not the plan's slightly different ones — see
+  phase 4's handover for that vocabulary) plus the escalation ladder (rung 1–2 restart at
+  the mapped step, the last rung always falls back to the SafeMode template regardless of
+  which finding triggered it, past the ladder is `NeedsHumanReview`) and the two loop-safety
+  rules from §8: the same (code, target) pair twice in a row escalates a rung immediately,
+  and a target that would sit later than the source step falls back to SafeMode instead of
+  cycling. A static-constructor check fails at process start if any `QaFindingCode` has no
+  route — deliberately loud rather than a silent `NeedsHumanReview` for a code nobody wired up.
+  `RepetitiveContent` routes to `RemediationOutcome.Replan` rather than a restart step, since
+  no earlier step can fix repetition without the strategist banning the topic.
+- `BudgetGuard` — the reserve-then-commit check from §24, `CheckBoth` checking the item
+  ceiling first (the more specific, more actionable fact) then the campaign ceiling with the
+  same estimate.
+
+**Not built yet, and "generate week" cannot run unattended without it:** the actual core
+loop (lease a run, `WorkflowStateMachine`-adjacent decision, execute one step, persist and
+re-enqueue in one transaction — §6's numbered list), the `IJobQueue` job type(s) that drive
+`ContentItemWorkflow`, the campaign-level `CampaignWorkflow`, wiring `RemediationRouter`'s
+decisions to actually re-run a step (nothing yet calls `ContentStrategistAgent`,
+`DeterministicQaSuite` and the renderer client in sequence), image generation (no client
+exists), the manual trigger endpoint, and the Hangfire weekly cron. `BudgetReservation`
+rows are never written by anything yet — `BudgetGuard` is ready for a caller that does not
+exist. Whoever picks this up next should wire the loop around these three pieces rather than
+re-deriving the policy they encode.
+
+285 unit tests in the suite are green, 68 of them new to this phase;
+architecture, integration and workflow suites unaffected.

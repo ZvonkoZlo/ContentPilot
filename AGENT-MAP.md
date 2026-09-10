@@ -47,7 +47,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 2 — Renderer and static templates | 1206 | done |
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
-| 5 — Orchestrator, retries, self-correction | 1266 | **next, unclaimed** |
+| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — policy landed, worker loop not wired |
 | 6 — Visual QA and Marketing QA | 1285 | unclaimed |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |
@@ -111,6 +111,16 @@ grouped by hundreds; `QaFindingCodes.GateFor` says which gate owns which code �
 QualityConfigurations.cs`. Calibration harness and threshold rationale:
 `tests/ContentPilot.RendererTests/FidelityCalibrationTests.cs`, regenerating
 `artifacts/fidelity-calibration.md` (git-ignored) on every run.
+
+**Orchestration (policy only — no worker loop yet)** — `Application/Orchestration/`
+(`ItemStateMachine` — legal §7 item transitions and loop-safety; `RemediationRouter` —
+§8 finding-code-to-restart-step table plus the escalation ladder; `BudgetGuard` —
+§24 reserve-then-commit). `Domain/Workflow/` (`WorkflowRun` — attempt counters and
+deadline read from `Domain.Tenancy.TenantLimits`, `WorkflowStep` — append-only,
+idempotency key `(RunId, StepName, Attempt)`, `BudgetReservation`); `ContentRevision`
+lives in `Domain/Content/` next to `ContentItem`. EF configuration in
+`Infrastructure/Persistence/Configurations/WorkflowConfigurations.cs`. Nothing yet calls
+any of this from a job — see PARALLEL-WORK.md's phase 5 section for what is still missing.
 
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation

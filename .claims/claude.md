@@ -19,27 +19,38 @@ src/ContentPilot.Application/Prompts/
 src/ContentPilot.Application/ContentMemory/
 src/ContentPilot.Application/Quality/
 src/ContentPilot.Application/Orchestration/
+src/ContentPilot.Application/Jobs/
 src/ContentPilot.Infrastructure/Ai/
+src/ContentPilot.Infrastructure/Jobs/
 src/ContentPilot.Infrastructure/Persistence/Migrations/
 tests/ContentPilot.UnitTests/Agents/
 tests/ContentPilot.UnitTests/Ai/
 tests/ContentPilot.UnitTests/Quality/
+tests/ContentPilot.UnitTests/Orchestration/
+tests/ContentPilot.UnitTests/Domain/
 
 ## notes
 
-**Phase 4 landed** (deterministic QA): `QaFindingCode`/`QaSeverity`/`QaGate`/`QaOutcome`
-in `Domain/Quality/` (append-only, grouped by hundreds, gate ownership enforced by
-`QualityReview`'s constructor), `DeterministicQaSuite` in `Application/Quality/` turning the
-renderer's `RenderReport` and `/compare` output into findings, and a calibration harness in
-`tests/ContentPilot.RendererTests/FidelityCalibrationTests.cs` that regenerates
-`artifacts/fidelity-calibration.md`. Migration `QualityReviews` landed. Full details in
-PARALLEL-WORK.md's phase 4 section.
+**Phase 4 landed** (deterministic QA) — see PARALLEL-WORK.md.
 
-Now on **phase 5 — orchestrator, retries and self-correction**. Read IMPLEMENTATION-PLAN.md
-§6–8 and §30–31 phase 5 (line 1266) before starting. `QaFinding`/`QaGate`/`QaOutcome` from
-phase 4 are the vocabulary the `RemediationRouter` switches on.
+**Phase 5 partially landed** (orchestrator policy, not yet wired to a worker):
+`WorkflowRun`/`WorkflowStep`/`BudgetReservation` in `Domain/Workflow/`, `ContentRevision` in
+`Domain/Content/`, migration `Workflow` landed. `Application/Orchestration/` has
+`ItemStateMachine` (§7 transition legality), `RemediationRouter` (§8 finding→step routing
+and escalation ladder), `BudgetGuard` (§24 reserve-then-commit) — all pure, all unit tested,
+none of it called from anywhere yet. Full detail in PARALLEL-WORK.md's phase 5 section,
+including exactly what is still missing before "generate week" runs unattended.
 
-Holds `migrations: true`. Nobody else runs `dotnet ef migrations add`. `WorkflowRun`,
-`WorkflowStep`, `ContentRevision` and `BudgetReservation` will need one — write the entities
-and configuration, then stop and say so in PARALLEL-WORK.md before generating it, the same
-way phase 3 and phase 4 did.
+**Still to do in this lane, in the order that makes sense:**
+1. The core loop itself (§6's numbered list) — lease a `WorkflowRun`, decide the next
+   action, execute one step, persist + transition + enqueue in one transaction.
+2. `IJobQueue` job type(s) for `ContentItemWorkflow`; wiring the existing
+   `ContentStrategistAgent`, `DeterministicQaSuite`, and a renderer HTTP client together
+   through the steps `ItemStateMachine` already knows the shape of.
+3. `CampaignWorkflow` (campaign-level: plan → fan out items → package).
+4. The manual trigger endpoint and the Hangfire weekly cron.
+5. Image generation has no client at all yet — needed before `AssetGeneration` can do
+   anything beyond passing through user-uploaded assets.
+
+Holds `migrations: true`. Nobody else runs `dotnet ef migrations add`. Add entities and
+configuration, skip the migration, and say so in PARALLEL-WORK.md — same as phases 3 and 4.

@@ -5,6 +5,7 @@ using ContentPilot.Domain.Branding;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Observability;
 using ContentPilot.Domain.Quality;
+using ContentPilot.Domain.Workflow;
 using ContentPilot.Domain.Common;
 using ContentPilot.Domain.Tenancy;
 using ContentPilot.Infrastructure.Jobs;
@@ -52,6 +53,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
 
     /// <summary>One row per QA gate per attempt, deterministic gates included.</summary>
     public DbSet<QualityReview> QualityReviews => Set<QualityReview>();
+
+    public DbSet<WorkflowRun> WorkflowRuns => Set<WorkflowRun>();
+
+    public DbSet<WorkflowStep> WorkflowSteps => Set<WorkflowStep>();
+
+    public DbSet<ContentRevision> ContentRevisions => Set<ContentRevision>();
+
+    public DbSet<BudgetReservation> BudgetReservations => Set<BudgetReservation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
