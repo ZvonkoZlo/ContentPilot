@@ -8,6 +8,7 @@ using ContentPilot.Infrastructure.Branding;
 using ContentPilot.Application.Jobs;
 using ContentPilot.Infrastructure.Jobs;
 using ContentPilot.Infrastructure.Persistence;
+using ContentPilot.Infrastructure.Rendering;
 using ContentPilot.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -83,6 +84,7 @@ public static class DependencyInjection
         services.TryAddScoped<GoldenTenantSeeder>();
 
         services.AddContentPilotAi(configuration);
+        services.AddContentPilotRendererClient(configuration);
 
         return services;
     }

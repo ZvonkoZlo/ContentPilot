@@ -121,8 +121,13 @@ NextAction` function §6 names directly, combining the other three into one deci
 `Domain.Tenancy.TenantLimits`, `WorkflowStep` — append-only, idempotency key
 `(RunId, StepName, Attempt)`, `BudgetReservation`); `ContentRevision` lives in
 `Domain/Content/` next to `ContentItem`. EF configuration in
-`Infrastructure/Persistence/Configurations/WorkflowConfigurations.cs`. Nothing yet calls
-`Decide` from a job — see PARALLEL-WORK.md's phase 5 sections for what is still missing.
+`Infrastructure/Persistence/Configurations/WorkflowConfigurations.cs`. The renderer client —
+`Application/Abstractions/IRendererClient.cs`, implemented by
+`Infrastructure/Rendering/HttpRendererClient.cs`, registered via
+`AddContentPilotRendererClient` — gives the Rendering and Validating steps a real way to
+reach the Renderer service, alongside `TemplateSelector` for Directing and
+`DeterministicQaSuite` for Validating's deterministic half. Nothing yet calls `Decide` from
+a job — see PARALLEL-WORK.md's phase 5 sections for what is still missing.
 
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation

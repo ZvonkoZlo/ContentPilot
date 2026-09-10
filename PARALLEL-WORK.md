@@ -373,3 +373,29 @@ finding is handed to `RemediationRouter` and its outcome is passed straight thro
 **Still not built:** the caller. Nothing leases a `WorkflowRun`, calls `Decide`, executes
 the named step, or persists the result in a transaction yet — that is the job handler
 described in the previous phase-5 note, and `Decide` is what it will call once it exists.
+
+### Phase 5 continued — the renderer HTTP client (`claude`)
+
+`IRendererClient` (`Application/Abstractions/IRendererClient.cs`) is the typed door to the
+Renderer service §11 calls for — the Rendering step and the Validating step's fidelity
+check now have a real way to reach it, alongside `TemplateSelector` for Directing and
+`DeterministicQaSuite` for the deterministic half of Validating. Implementation is
+`HttpRendererClient` in `Infrastructure/Rendering/`, a thin typed `HttpClient` wrapper with
+no state of its own.
+
+Two failure shapes, on purpose: `RenderSpecRejectedException` for a 400 (the renderer's own
+contract for "this spec cannot be satisfied") is permanent and routes remediation
+immediately; `RendererUnavailableException` (network failure, timeout, 5xx) is exactly what
+§8's transient-retry counter exists for. A caller-initiated cancellation is left as
+`TaskCanceledException` rather than folded into "unavailable" — an item the orchestrator
+itself cancelled should not tick the transient counter as though a provider had failed.
+Registered via `AddContentPilotRendererClient`, one line appended to the shared
+`DependencyInjection.cs`; configuration key is `Renderer:BaseUrl` / `Renderer:Timeout`.
+
+**Still missing for a real Rendering/Validating step to run end to end:** the code that
+builds a `RenderImageRequest` from a `CreativeSpec` (SpecAssembly does not exist yet), and
+the code that turns a `RenderImageResponse` plus a `CompareResult` per immutable slot into
+the `DeterministicQaInput` the QA suite already accepts — both are glue, not new policy, but
+neither is written. `TenantLimits`, `ItemStateMachine`, `RemediationRouter`, `BudgetGuard`,
+`OrchestratorCore`, `DeterministicQaSuite` and now `IRendererClient` are all the pieces the
+core loop needs; nothing yet holds them in one hand.
