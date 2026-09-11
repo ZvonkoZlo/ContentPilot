@@ -14,6 +14,9 @@ public sealed class RemediationRouterTests
     private static QaFinding Finding(QaFindingCode code, QaSeverity severity = QaSeverity.Blocking) =>
         new() { Code = code, Severity = severity, Detail = code.ToString() };
 
+    private static QaFinding Finding(QaFindingCode code, QaSeverity severity, double confidence) =>
+        new() { Code = code, Severity = severity, Confidence = confidence, Detail = code.ToString() };
+
     [Fact]
     public void Every_finding_code_routes_somewhere()
     {
@@ -34,6 +37,50 @@ public sealed class RemediationRouterTests
         };
 
         RemediationRouter.PrimaryFinding(findings)!.Code.ShouldBe(QaFindingCode.TextOverflow);
+    }
+
+    [Fact]
+    public void A_low_confidence_finding_from_a_model_gate_never_drives_the_decision()
+    {
+        // §9: "low-confidence findings are recorded but do not trigger remediation." A
+        // vision model asked "is anything wrong?" will otherwise always find something.
+        var findings = new[] { Finding(QaFindingCode.OffBrand, QaSeverity.Blocking, confidence: 0.4) };
+
+        RemediationRouter.PrimaryFinding(findings).ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_finding_right_at_the_confidence_threshold_still_counts()
+    {
+        var findings = new[]
+        {
+            Finding(QaFindingCode.OffBrand, QaSeverity.Blocking, confidence: RemediationRouter.MinConfidenceForRemediation),
+        };
+
+        RemediationRouter.PrimaryFinding(findings)!.Code.ShouldBe(QaFindingCode.OffBrand);
+    }
+
+    [Fact]
+    public void A_deterministic_finding_carries_no_confidence_and_is_never_filtered_by_it()
+    {
+        // A bounding box is not 80% sure — deterministic findings simply have no confidence
+        // value, and the filter has to treat that as "always acts on it," not "never does."
+        var findings = new[] { Finding(QaFindingCode.TextOverflow, QaSeverity.Blocking) };
+
+        findings[0].Confidence.ShouldBeNull();
+        RemediationRouter.PrimaryFinding(findings)!.Code.ShouldBe(QaFindingCode.TextOverflow);
+    }
+
+    [Fact]
+    public void A_low_confidence_finding_is_skipped_in_favour_of_a_confident_lesser_one()
+    {
+        var findings = new[]
+        {
+            Finding(QaFindingCode.OffBrand, QaSeverity.Blocking, confidence: 0.2),
+            Finding(QaFindingCode.WeakHook, QaSeverity.Major, confidence: 0.9),
+        };
+
+        RemediationRouter.PrimaryFinding(findings)!.Code.ShouldBe(QaFindingCode.WeakHook);
     }
 
     [Fact]

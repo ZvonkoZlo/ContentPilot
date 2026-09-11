@@ -784,3 +784,69 @@ plain text turn otherwise, unchanged from before. `AgentExecutor` computes
 
 360 unit, 10 architecture, 76 integration and the workflow smoke test still green — this
 step changes the contract but nothing yet uses the new capability.
+
+### Phase 6 core — VisualQaAgent and MarketingQaAgent, wired into the live loop (`claude`)
+
+Both judgement gates now exist and run. `VisualQaAgent` (gate 2, `Domain.Quality.QaGate.Visual`,
+6xx codes) looks at the full render plus a 150px thumbnail (`Infrastructure.Quality.ImageThumbnailer`,
+Magick.NET) and judges composition, artefacts, on-brand-ness, thumbnail legibility, subject
+cropping — explicitly told in its prompt not to re-check anything the deterministic gate already
+measures. `MarketingQaAgent` (gate 3, 7xx codes) is text-only and judges the copy; its stated
+"most important job" is claim-grounding — checking that a citation's claim actually matches what
+the cited `ProductFact` says, the one thing `CopyValidator` cannot verify at Writing time because
+it only knows the citation key exists. Both follow the established agent shape: prompt + hand-written
+JSON schema + validator that rejects an unknown code, a code from the wrong gate band
+(`QaFindingCodes.BelongsTo`), an out-of-range confidence, or a blank detail.
+
+Wired into `ContentItemWorkflowJobHandler.ExecuteRenderingAsync`: gate 1 (deterministic) runs
+first as before; gates 2 and 3 now run afterwards, but **only if gate 1 didn't already fail** —
+paying for a model judgement on a render already known bad would be pure cost with no
+information gain. `FinishAttemptAsync` was rewritten to accept `IReadOnlyList<QaReport>` instead
+of one, writing one `QualityReview` row per gate that actually ran.
+
+**Gotcha worth flagging for anyone touching this handler**: the first attempt at running gates 2
+and 3 used `Task.WhenAll` since neither reads the other's output. It threw
+`InvalidOperationException: A second operation was started on this context instance` —
+`AppDbContext` is not safe for concurrent async use from one instance, and both gates go through
+`AgentExecutor.RunAsync`, which writes to the same injected `db`. Fixed by running them
+sequentially, matching every other job handler's single-DbContext-per-invocation shape. True
+concurrency would need separate DbContext scopes per gate — a reasonable follow-up if judgement
+latency ever matters, not a correctness requirement now.
+
+**§9's confidence rule** is implemented as `RemediationRouter.MinConfidenceForRemediation = 0.6`
+plus a filter in `PrimaryFinding`: a deterministic finding has no `Confidence` (always null) and
+is always eligible; a model finding below 0.6 is still persisted in full on its `QualityReview`
+row (nothing is silently dropped) but excluded from what `OrchestratorCore.Decide` sees, so a
+vision model's occasional low-conviction guess can't drive a remediation restart on its own.
+
+Two test-fixture bugs found and fixed along the way: the integration suite's fake render image
+was `new byte[24_000]` of zeros — fine for a byte-count check, but `ImageThumbnailer` crashes on
+non-decodable bytes (`MagickMissingDelegateErrorException`) once something actually opens them.
+Replaced with a real decodable image (`MagickImage` + `AddNoise(NoiseType.Random)`); the first
+attempt used PNG, whose lossless compression made random noise balloon to 8.8MB and trip the
+deterministic gate's own `MaxPlausibleBytes` ceiling — switched to JPEG at Quality=85.
+
+Existing integration tests updated for the new 3-gate reality: the clean-render test now expects
+three `QualityReview` rows (one per gate) instead of one; the crash-resume test now asserts the
+resumed pass produces exactly `["visual-qa", "marketing-qa"]` `AgentRun`s (proving Writing was
+correctly skipped on resume, while the two new gates are legitimately fresh work every pass).
+
+New unit coverage: `VisualQaAgentTests`, `MarketingQaAgentTests` (prompt/variable satisfaction,
+profile names, image ordering for VisualQA, `BuildImages` empty-by-default confirmed for the
+text-only MarketingQA agent via the `IAgent<,>` interface reference — the default interface
+member isn't visible through the concrete class type), and new `RemediationRouterTests` cases
+for the confidence threshold (below cutoff excluded, at cutoff included, deterministic findings
+unaffected, a confident lesser finding beats an unconfident worse one).
+
+380 unit tests, 10 architecture tests green (full solution build clean, 0 warnings). Integration
+and workflow suites were not re-run to completion this pass — this dev machine's Docker Desktop
+negotiates client API 1.44 against an engine that only serves 1.43, so Testcontainers refuses to
+start; this is a local Docker Desktop version mismatch, unrelated to any code change here, and
+was not present earlier in this same session. Anyone continuing this work on a machine with a
+matching Docker Desktop version should re-run
+`dotnet test tests/ContentPilot.WorkflowTests tests/ContentPilot.IntegrationTests` before trusting
+the integration-level assertions described above.
+
+**Still open for phase 6**: the QA pass-rate metric (§9: >60% first-attempt pass), §27's eval
+scenarios (need golden fixture images that don't exist yet), carousel continuity checks (moot
+until Phase 5 drives carousels — it currently only drives `StaticPost`).

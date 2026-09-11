@@ -88,7 +88,7 @@ public sealed class PromptLibraryTests
     {
         // The profiles configured in appsettings.json. A prompt naming a profile nobody
         // configured fails at the first call rather than at startup, which is too late.
-        string[] configured = ["strategist", "creative-director", "copywriter", "marketing-qa"];
+        string[] configured = ["strategist", "creative-director", "copywriter", "marketing-qa", "visual-qa"];
 
         foreach (var prompt in Library.All)
         {

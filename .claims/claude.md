@@ -45,22 +45,44 @@ tests/ContentPilot.WorkflowTests/
 
 **Phase 5 done** — see PARALLEL-WORK.md for the full history.
 
-**Now on phase 6 — Visual QA and Marketing QA**, per the plan's own recommended order
-(§36–37: added on top of a working loop, before Phase 8). Read IMPLEMENTATION-PLAN.md §9
-(gates 2 and 3), §27 (eval scenarios), and phase 6 itself (line 1285) before touching this.
+**Phase 6 — Visual QA and Marketing QA — core is done.** `VisualQaAgent` (gate 2) and
+`MarketingQaAgent` (gate 3) are both built, wired into `ContentItemWorkflowJobHandler`
+between Rendering and Validating, and covered by unit + integration tests. See
+PARALLEL-WORK.md for the full history of this phase.
 
-First piece landed: `ILanguageModelClient` now supports attaching images to a call
-(`LlmRequest.Images`, `IAgent<,>.BuildImages`) — needed before a VisualQA agent can exist at
-all, since every agent so far has been text-only. Both provider adapters updated. No
-behaviour change for existing agents (default empty).
+Landed this pass, on top of the vision-support foundation (`LlmRequest.Images`,
+`IAgent<,>.BuildImages`, both provider adapters):
 
-**Not yet built:** `VisualQaAgent`, `MarketingQaAgent`, their prompts and validators, the
-6xx/7xx `QaFindingCode` bands are already reserved in `Domain/Quality/QaFinding.cs` from
-Phase 4 waiting for exactly this. Parallel gate execution and finding merge with the
-deterministic gate. The QA pass-rate metric §9 calls for (>60% first-attempt pass, treat a
-false-positive rate over 0.15 as a blocking regression — §27's own numbers). Carousel
-continuity checks are moot until carousels are actually driven (Phase 5 only drives
-StaticPost items).
+- `VisualQaAgent` / `VisualQaOutput` / `VisualQaValidator` / `visual-qa.prompt.md` — judges
+  the full render plus a 150px thumbnail (`ImageThumbnailer`, Infrastructure/Quality/)
+  against the 6xx band.
+- `MarketingQaAgent` / `MarketingQaOutput` / `MarketingQaValidator` / `marketing-qa.prompt.md`
+  — text-only, judges copy against the 7xx band; its main job is claim-grounding (does the
+  copy's claim match what the cited `ProductFact` actually says, not just that a citation key
+  exists).
+- `"visual-qa"` profile added to both `appsettings.json` files; both agents registered in
+  `AiServiceCollectionExtensions`.
+- `RemediationRouter.MinConfidenceForRemediation = 0.6` + `PrimaryFinding` filtering — §9's
+  "low-confidence findings are recorded but do not trigger remediation" rule. Deterministic
+  findings have no `Confidence` and are always acted on; model findings below the threshold
+  are persisted in the `QualityReview` row but excluded from the set `OrchestratorCore.Decide`
+  sees.
+- `ContentItemWorkflowJobHandler.ExecuteRenderingAsync`: gate 1 runs first; gates 2 and 3 run
+  only if gate 1 didn't already fail (avoids paying for a model judgement on a render already
+  known bad). Gates 2 and 3 run **sequentially, not via `Task.WhenAll`** — `AppDbContext` is
+  not safe for concurrent operations on one instance; this bit us once (test failure), fixed
+  by sequencing rather than adding a second DbContext scope. `FinishAttemptAsync` now takes
+  `IReadOnlyList<QaReport>` and writes one `QualityReview` row per gate.
+
+**Still not done for phase 6** (deliberately deferred, not forgotten):
+
+- The QA pass-rate metric §9 calls for (>60% first-attempt pass, false-positive rate over
+  0.15 = blocking regression — §27's own numbers). No metric/dashboard exists yet; would need
+  real (non-scripted) model runs to measure honestly.
+- §27's eval scenarios (VisualQA catches mutated screenshots, false-positive rate ceiling)
+  are not built — they need golden fixture images, which don't exist yet.
+- Carousel continuity checks (`CarouselDiscontinuity` code) are moot until Phase 5's item
+  handler drives carousels — it currently only drives `StaticPost`.
 
 `migrations: false` — this phase adds no tables (`QualityReview` and `QaFinding` already
 carry everything a model-gate finding needs).

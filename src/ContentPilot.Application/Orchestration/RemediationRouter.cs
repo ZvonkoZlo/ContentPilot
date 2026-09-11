@@ -114,9 +114,20 @@ public static class RemediationRouter
     /// occluded screenshot also resolves whatever safe-area nudge came with it — so spending
     /// an attempt on the second-worst finding while the worst stands would waste it.
     /// </summary>
+    /// <summary>
+    /// Below this, a model-gate finding (Visual or Marketing; deterministic findings carry
+    /// no confidence and are never filtered here) is recorded but never spends an attempt on
+    /// its own — exactly §9's "low-confidence findings are recorded but do not trigger
+    /// remediation." A vision or marketing judge asked "is anything wrong?" will otherwise
+    /// always find something, and treating every maybe as a certainty is how that turns into
+    /// remediation that never converges.
+    /// </summary>
+    public const double MinConfidenceForRemediation = 0.6;
+
     public static QaFinding? PrimaryFinding(IReadOnlyList<QaFinding> findings) =>
         findings
             .Where(f => f.Severity is QaSeverity.Blocking or QaSeverity.Major)
+            .Where(f => f.Confidence is null or >= MinConfidenceForRemediation)
             .OrderByDescending(f => f.Severity)
             .ThenBy(f => f.Code)
             .FirstOrDefault();

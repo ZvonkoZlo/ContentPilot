@@ -53,6 +53,8 @@ public static class AiServiceCollectionExtensions
 
         services.TryAddSingleton<ContentStrategistAgent>();
         services.TryAddSingleton<CopywriterAgent>();
+        services.TryAddSingleton<VisualQaAgent>();
+        services.TryAddSingleton<MarketingQaAgent>();
         services.TryAddScoped<Branding.ContentMemoryReader>();
 
         return services;

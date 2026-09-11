@@ -6,6 +6,7 @@ using ContentPilot.Application.Capabilities;
 using ContentPilot.Application.Jobs;
 using ContentPilot.Application.Prompts;
 using ContentPilot.Domain.Content;
+using ContentPilot.Domain.Quality;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Branding;
@@ -14,6 +15,7 @@ using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.IntegrationTests.Infrastructure;
 using ContentPilot.Rendering.Contracts;
 using ContentPilot.TestSupport;
+using ImageMagick;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -62,8 +64,12 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         (await db.CreativeSpecs.CountAsync(s => s.ContentItemId == fixtureData.Item.Id)).ShouldBe(1);
         (await db.ContentAssets.CountAsync(a => a.ContentItemId == fixtureData.Item.Id)).ShouldBe(1);
 
-        var review = await db.QualityReviews.AsNoTracking().SingleAsync(q => q.ContentItemId == fixtureData.Item.Id);
-        review.Findings.ShouldBeEmpty();
+        // Gate 1 passed clean, so gates 2 and 3 ran too — three reviews, one per gate,
+        // every one of them clean.
+        var reviews = await db.QualityReviews.AsNoTracking().Where(q => q.ContentItemId == fixtureData.Item.Id).ToListAsync();
+        reviews.Select(r => r.Gate).ShouldBe([QaGate.Deterministic, QaGate.Visual, QaGate.Marketing], ignoreOrder: true);
+        reviews.ShouldAllBe(r => r.Findings.Count == 0,
+            string.Join(" | ", reviews.Select(r => $"{r.Gate}: {string.Join(", ", r.Findings.Select(f => $"{f.Code}({f.Detail})"))}")));
     }
 
     [DockerFact]
@@ -129,11 +135,15 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         var reloaded = await db.ContentItems.AsNoTracking().SingleAsync(i => i.Id == item.Id);
         reloaded.Status.ShouldBe(ContentItemStatus.Approved);
 
-        // The model this fixture wires up would happily answer again — the point is that
-        // resuming never asks it to. Zero runs and zero spend is the only way to be sure
-        // Directing and Writing were skipped rather than quietly redone.
-        (await db.AgentRuns.CountAsync(r => r.ContentItemId == item.Id)).ShouldBe(0);
-        (await db.CostEntries.CountAsync(e => e.ContentItemId == item.Id)).ShouldBe(0);
+        // Writing's own model call is never repeated — the two AgentRuns that do exist are
+        // VisualQA and MarketingQA, legitimately new work for this attempt that nothing
+        // before this resumed pass had ever run. Zero CostEntry rows for the copywriter
+        // specifically is the real assertion that Writing was skipped rather than redone.
+        var runs = await db.AgentRuns.AsNoTracking().Where(r => r.ContentItemId == item.Id).ToListAsync();
+        runs.Select(r => r.AgentName).ShouldBe(["visual-qa", "marketing-qa"], ignoreOrder: true);
+
+        var costEntries = await db.CostEntries.AsNoTracking().Where(e => e.ContentItemId == item.Id).ToListAsync();
+        costEntries.ShouldAllBe(e => e.AgentRunId != null && runs.Select(r => r.Id).Contains(e.AgentRunId.Value));
     }
 
     [DockerFact]
@@ -228,7 +238,7 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         var tenantContext = scope.ServiceProvider.GetRequiredService<ITenantContext>();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
 
-        var model = new ScriptedModel(CopyResponse());
+        var model = new ScriptedModel();
         var agentExecutor = new AgentExecutor(
             model, PromptLibrary.LoadEmbedded(), scope.ServiceProvider.GetRequiredService<PromptRegistry>(),
             db, store, tenantContext, clock, NullLogger<AgentExecutor>.Instance);
@@ -242,6 +252,9 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
             scope.ServiceProvider.GetRequiredService<IAssetContentResolver>(),
             agentExecutor,
             new CopywriterAgent(),
+            new VisualQaAgent(),
+            new MarketingQaAgent(),
+            scope.ServiceProvider.GetRequiredService<ContentMemoryReader>(),
             new FakeModelProfileRegistry(),
             PromptLibrary.LoadEmbedded(),
             NullLogger<ContentItemWorkflowJobHandler>.Instance);
@@ -278,15 +291,24 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         public IReadOnlyCollection<ModelProfile> All => [_copywriter];
     }
 
-    /// <summary>Same scripted-model trick <c>AgentExecutorTests</c> uses: only the model is faked.</summary>
-    private sealed class ScriptedModel(params string[] responses) : ILanguageModelClient
+    /// <summary>
+    /// Same scripted-model trick <c>AgentExecutorTests</c> uses: only the model is faked.
+    /// Keyed by profile name, since a single attempt now calls three different agents
+    /// (Writing, and — once gate 1 passes — VisualQA and MarketingQA in parallel).
+    /// </summary>
+    private sealed class ScriptedModel(
+        string? copywriterResponse = null, string? visualQaResponse = null, string? marketingQaResponse = null)
+        : ILanguageModelClient
     {
-        private int _call;
-
         public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct = default)
         {
-            var json = responses[Math.Min(_call, responses.Length - 1)];
-            _call++;
+            var json = request.Profile switch
+            {
+                "copywriter" => copywriterResponse ?? CopyResponse(),
+                "visual-qa" => visualQaResponse ?? """{"findings":[]}""",
+                "marketing-qa" => marketingQaResponse ?? """{"findings":[]}""",
+                _ => throw new InvalidOperationException($"ScriptedModel was not told what to answer for profile '{request.Profile}'."),
+            };
 
             return Task.FromResult(new LlmResponse
             {
@@ -336,7 +358,10 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
             {
                 TemplateId = request.TemplateId,
                 TemplateVersion = request.TemplateVersion ?? manifest.Version,
-                Image = ImagePayload.FromBytes(new byte[24_000], "image/png"),
+                // A real, decodable PNG — VisualQA's thumbnail step actually opens these
+                // bytes now, so zero-filled padding (which satisfied only the deterministic
+                // gate's byte-count check) is no longer enough.
+                Image = FakePng(width, height),
                 Report = new RenderReport
                 {
                     Width = width,
@@ -351,5 +376,21 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
 
         public Task<CompareResult> CompareAsync(CompareRequest request, CancellationToken ct = default) =>
             throw new NotSupportedException("The fake template declares no immutable asset slots.");
+
+        /// <summary>
+        /// Noise rather than a flat fill, so compression cannot shrink it under the
+        /// deterministic gate's minimum-plausible-bytes floor the way a solid colour would —
+        /// JPEG rather than PNG, so that same noise does not blow past the maximum-plausible
+        /// ceiling instead, the way lossless compression of pure noise does.
+        /// </summary>
+        private static ImagePayload FakePng(int width, int height)
+        {
+            using var image = new MagickImage(MagickColors.White, (uint)width, (uint)height);
+            image.AddNoise(NoiseType.Random);
+            image.Format = MagickFormat.Jpeg;
+            image.Quality = 85;
+
+            return ImagePayload.FromBytes(image.ToByteArray(), "image/jpeg");
+        }
     }
 }

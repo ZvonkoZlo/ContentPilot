@@ -14,6 +14,7 @@ using ContentPilot.Domain.Tenancy;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Persistence;
+using ContentPilot.Infrastructure.Quality;
 using ContentPilot.Rendering.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -53,6 +54,9 @@ public sealed class ContentItemWorkflowJobHandler(
     IAssetContentResolver assetResolver,
     AgentExecutor agentExecutor,
     CopywriterAgent copywriter,
+    VisualQaAgent visualQa,
+    MarketingQaAgent marketingQa,
+    Branding.ContentMemoryReader recentContentReader,
     IModelProfileRegistry profiles,
     PromptLibrary prompts,
     ILogger<ContentItemWorkflowJobHandler> logger)
@@ -460,7 +464,7 @@ public sealed class ContentItemWorkflowJobHandler(
                 }],
             };
 
-            return await FinishAttemptAsync(item, run, report, attempt, now, ct);
+            return await FinishAttemptAsync(item, run, [report], attempt, now, ct);
         }
         catch (RendererUnavailableException ex)
         {
@@ -527,31 +531,144 @@ public sealed class ContentItemWorkflowJobHandler(
             File = new RenderedFile { Width = response.Report.Width, Height = response.Report.Height, Bytes = bytes.Length },
         };
 
-        var qaReport = DeterministicQaSuite.Run(qaInput);
+        var gate1 = DeterministicQaSuite.Run(qaInput);
+        var reports = new List<QaReport> { gate1 };
+
+        // Gate 1 is free; gates 2 and 3 are not. Paying a vision and a text model to judge
+        // an image gate 1 has already proven broken would be exactly the cost sink §6's
+        // objective warns against — they only run once the deterministic gate has nothing
+        // blocking left to say.
+        if (gate1.Outcome != QaOutcome.Fail)
+        {
+            reports.AddRange(await RunJudgementGatesAsync(item, run, brand, response.Image, attempt, ct));
+        }
 
         RecordStep(item, run, nameof(ContentItemStatus.Rendering), attempt, now);
         TransitionTo(item, ContentItemStatus.Validating);
 
-        return await FinishAttemptAsync(item, run, qaReport, attempt, now, ct);
+        return await FinishAttemptAsync(item, run, reports, attempt, now, ct);
     }
 
     /// <summary>
-    /// Validating never gets its own pass through the loop: the report only exists in
-    /// memory for the moment right after a render, so it is fed straight back into
-    /// <see cref="OrchestratorCore.Decide"/> here rather than round-tripped through a
-    /// second job.
+    /// Gates 2 and 3 — the plan's own "parallel gate execution" in the sense that matters:
+    /// neither reads the other's output, and either could run first, or run on separate
+    /// threads against separate connections in a deployment that wanted the wall-clock
+    /// saving. Here they run one after the other, deliberately, because both go through the
+    /// same <see cref="AgentExecutor"/> and the same <c>AppDbContext</c> every step in this
+    /// handler already shares — and EF Core's DbContext is not safe for two operations in
+    /// flight on it at once. Splitting these across their own DbContext scopes to get true
+    /// concurrency is a reasonable follow-up if the latency ever matters; it is not a
+    /// correctness requirement today. A gate whose model call cannot be repaired into valid
+    /// output fails open: it is judgement added on top of a working loop, and a broken judge
+    /// must not turn into an outage for an item the deterministic gate already cleared.
+    /// </summary>
+    private async Task<IReadOnlyList<QaReport>> RunJudgementGatesAsync(
+        ContentItem item, WorkflowRun run, BrandSnapshot brand, ImagePayload image, int attempt, CancellationToken ct)
+    {
+        var copySet = await LoadCopySetAsync(run.Id, attempt, ct);
+        var context = new AgentContext { CampaignId = item.CampaignId, ContentItemId = item.Id };
+
+        var reports = new List<QaReport>();
+
+        if (await RunVisualQaAsync(brand, image, context, ct) is { } visual)
+        {
+            reports.Add(visual);
+        }
+
+        if (copySet is not null && await RunMarketingQaAsync(item, brand, copySet, context, ct) is { } marketing)
+        {
+            reports.Add(marketing);
+        }
+
+        return reports;
+    }
+
+    private async Task<QaReport?> RunVisualQaAsync(BrandSnapshot brand, ImagePayload image, AgentContext context, CancellationToken ct)
+    {
+        var input = new VisualQaInput { Brand = brand, FullImage = image, Thumbnail = ImageThumbnailer.Create(image) };
+
+        try
+        {
+            var result = await agentExecutor.RunAsync(visualQa, input, context, ct);
+
+            return new QaReport { Gate = QaGate.Visual, Findings = VisualQaValidator.ToFindings(result.Value) };
+        }
+        catch (AgentValidationException ex)
+        {
+            logger.LogWarning("VisualQA could not produce valid output for item {ItemId}: {Message}", context.ContentItemId, ex.Message);
+
+            return null;
+        }
+    }
+
+    private async Task<QaReport?> RunMarketingQaAsync(
+        ContentItem item, BrandSnapshot brand, CopySet copySet, AgentContext context, CancellationToken ct)
+    {
+        var recentContent = await recentContentReader.ReadAsync(brand.BrandId, clock.UtcNow, ct);
+
+        var input = new MarketingQaInput
+        {
+            Brand = brand,
+            Topic = item.Topic,
+            Objective = item.Objective,
+            Copy = copySet,
+            RecentContent = recentContent,
+        };
+
+        try
+        {
+            var result = await agentExecutor.RunAsync(marketingQa, input, context, ct);
+
+            return new QaReport { Gate = QaGate.Marketing, Findings = MarketingQaValidator.ToFindings(result.Value) };
+        }
+        catch (AgentValidationException ex)
+        {
+            logger.LogWarning("MarketingQA could not produce valid output for item {ItemId}: {Message}", context.ContentItemId, ex.Message);
+
+            return null;
+        }
+    }
+
+    private async Task<CopySet?> LoadCopySetAsync(Guid runId, int attempt, CancellationToken ct)
+    {
+        var step = await db.WorkflowSteps.AsNoTracking().FirstOrDefaultAsync(
+            s => s.WorkflowRunId == runId && s.StepName == nameof(ContentItemStatus.Writing) &&
+                 s.Attempt == attempt && s.Outcome == WorkflowStepOutcome.Succeeded, ct);
+
+        return step?.ResultJson is null ? null : JsonSerializer.Deserialize<CopySet>(step.ResultJson, Json);
+    }
+
+    /// <summary>
+    /// Validating never gets its own pass through the loop: a gate's report only exists in
+    /// memory for the moment right after a render, so all of them are fed straight back into
+    /// <see cref="OrchestratorCore.Decide"/> here rather than round-tripped through a second
+    /// job. Every report becomes its own <c>QualityReview</c> row, one per gate per attempt,
+    /// exactly as the entity's own uniqueness promises.
     /// </summary>
     private async Task<bool> FinishAttemptAsync(
-        ContentItem item, WorkflowRun run, QaReport qaReport, int attempt, DateTimeOffset now, CancellationToken ct)
+        ContentItem item, WorkflowRun run, IReadOnlyList<QaReport> reports, int attempt, DateTimeOffset now, CancellationToken ct)
     {
-        db.QualityReviews.Add(qaReport.ToReview(item.TenantId, item.Id, attempt, now));
+        foreach (var report in reports)
+        {
+            db.QualityReviews.Add(report.ToReview(item.TenantId, item.Id, attempt, now));
+        }
+
+        // A finding below the remediation confidence threshold is still persisted above —
+        // it is evidence, and dropping it would make the QA pass-rate metric lie — but it
+        // never drives the decision on its own, exactly §9's "recorded but do not trigger
+        // remediation." The Gate on this merged view is never read: it exists only to reach
+        // OrchestratorCore.Decide, and is never itself turned into a QualityReview row.
+        var decisionFindings = reports
+            .SelectMany(r => r.Findings)
+            .Where(f => f.Confidence is null or >= RemediationRouter.MinConfidenceForRemediation)
+            .ToList();
 
         var decision = OrchestratorCore.Decide(new WorkflowDecisionContext
         {
             Run = run,
             CurrentStep = ContentItemStatus.Validating,
             Now = now,
-            QaReport = qaReport,
+            QaReport = new QaReport { Gate = QaGate.Deterministic, Findings = decisionFindings },
             PreviousRemediation = await LoadPreviousRemediationAsync(run.Id, ct),
         });
 

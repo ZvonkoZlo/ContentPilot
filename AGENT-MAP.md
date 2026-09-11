@@ -48,7 +48,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
-| 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — vision support landed, agents not yet built |
+| 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired into the live loop; still open: QA pass-rate metric, §27 evals, carousel continuity |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |
 | 9 — Hardening, cost calibration, evals | 1342 | unclaimed |
@@ -98,29 +98,48 @@ Config shapes live in `AiOptions.cs` (`AiOptions`, `ProviderOptions`, `ModelProf
 `CopyValidator` with `CopySlotBrief`; `TemplateSelector` (template eligibility computed from
 manifests); `SpecAssembler` (template + `CopySet` + `BrandSnapshot` → `RenderImageRequest`,
 plus `ComputeHash` and the `VisualIdentity` → `BrandTokens` mapping — SpecAssembly's
-executor, deterministic like `TemplateSelector`). Execution and run persistence:
-`Infrastructure/Ai/AgentExecutor.cs` with
-`AgentContext`. Prompts: `Application/Prompts/` (`PromptLibrary`, `PromptTemplate`,
-`content-strategist.prompt.md`, `copywriter.prompt.md`), registry in
-`Infrastructure/Ai/PromptRegistry.cs`.
+executor, deterministic like `TemplateSelector`); `VisualQaAgent` (gate 2, vision — full
+image + 150px thumbnail) with `VisualQaInput`/`VisualQaOutput`/`VisualQaFinding`,
+`VisualQaValidator`; `MarketingQaAgent` (gate 3, text-only — claim-grounding is its main
+job) with `MarketingQaInput`/`MarketingQaOutput`/`MarketingQaFinding`, `MarketingQaValidator`.
+Both validators reject an unknown code, a code from the wrong `QaGate` band
+(`QaFindingCodes.BelongsTo`), out-of-range confidence, or a blank detail. Execution and run
+persistence: `Infrastructure/Ai/AgentExecutor.cs` with
+`AgentContext` (computes `agent.BuildImages(input)` once per call — see `IAgent<,>` below).
+Prompts: `Application/Prompts/` (`PromptLibrary`, `PromptTemplate`,
+`content-strategist.prompt.md`, `copywriter.prompt.md`, `visual-qa.prompt.md`,
+`marketing-qa.prompt.md`), registry in `Infrastructure/Ai/PromptRegistry.cs`.
+`IAgent<TInput,TOutput>.BuildImages` is a default interface member (returns empty) — call it
+through the interface type, not the concrete class, or it won't resolve.
+`ILanguageModelClient`'s `LlmRequest.Images` (`IReadOnlyList<LlmImageAttachment>`) is what
+carries them to the provider; both Anthropic and OpenAI adapters send images first, text
+last. `Infrastructure/Quality/ImageThumbnailer.cs` (Magick.NET) makes the 150px thumbnail
+VisualQA needs.
 
 **Content memory** — `Application/ContentMemory/SimHash.cs`;
 `Infrastructure/Branding/ContentMemoryReader.cs`.
 
-**Quality (gate 1)** — `Domain/Quality/` (`QaFinding`, `QaFindingCode` — append-only and
-grouped by hundreds; `QaFindingCodes.GateFor` says which gate owns which code —,
-`QaSeverity`, `QaGate`, `QaOutcome`, `QualityReview`). `Application/Quality/`
-(`DeterministicQaSuite`, `DeterministicQaInput`/`DeterministicQaOptions`, `QaReport`,
-`Checks/` — `LayoutChecks`, `ContrastCheck`, `LogoChecks`, `FidelityChecks`,
-`FileSanityChecks`). EF configuration in `Infrastructure/Persistence/Configurations/
+**Quality (gates 1–3)** — `Domain/Quality/` (`QaFinding` — has an optional `Confidence`, null
+for deterministic findings, set by model gates; `QaFindingCode` — append-only and grouped by
+hundreds: 1xx layout/2xx logo/3xx fidelity/4xx file sanity/5xx video are gate 1, 6xx visual
+judgement is gate 2, 7xx marketing judgement is gate 3; `QaFindingCodes.GateFor`/`BelongsTo`
+—, `QaSeverity`, `QaGate`, `QaOutcome`, `QualityReview` — one row per gate per attempt).
+`Application/Quality/` (`DeterministicQaSuite` — gate 1, `DeterministicQaInput`/
+`DeterministicQaOptions`, `QaReport`, `Checks/` — `LayoutChecks`, `ContrastCheck`,
+`LogoChecks`, `FidelityChecks`, `FileSanityChecks`). Gates 2/3 are `VisualQaAgent`/
+`MarketingQaAgent` under Agents above, not here — they're agents, not pure checks. EF
+configuration in `Infrastructure/Persistence/Configurations/
 QualityConfigurations.cs`. Calibration harness and threshold rationale:
 `tests/ContentPilot.RendererTests/FidelityCalibrationTests.cs`, regenerating
 `artifacts/fidelity-calibration.md` (git-ignored) on every run.
 
 **Orchestration** — `Application/Orchestration/` (`ItemStateMachine` — legal §7 item
 transitions and loop-safety; `RemediationRouter` — §8 finding-code-to-restart-step table
-plus the escalation ladder; `BudgetGuard` — §24 reserve-then-commit, not yet wired to a
-caller; `OrchestratorCore.Decide` — the `(WorkflowRun, WorkflowStep[]) => NextAction`
+plus the escalation ladder, plus `MinConfidenceForRemediation = 0.6` — §9's rule that a
+low-confidence model-gate finding is recorded but never drives a remediation decision (only
+`PrimaryFinding`'s input is filtered by this; the `QualityReview` row keeps every finding
+unfiltered); `BudgetGuard` — §24 reserve-then-commit, wired into
+`ContentItemWorkflowJobHandler`; `OrchestratorCore.Decide` — the `(WorkflowRun, WorkflowStep[]) => NextAction`
 function §6 names directly). `Domain/Workflow/` (`WorkflowRun` — attempt counters and
 deadline read from `Domain.Tenancy.TenantLimits`, `WorkflowStep` — append-only, idempotency
 key `(RunId, StepName, Attempt)`, plus `ResultJson` for carrying one step's decision to the
