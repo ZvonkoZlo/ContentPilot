@@ -119,5 +119,12 @@ with a promoted best attempt package into `_needs-review/item-NN/` (separate num
 `post-NN`) with their QA findings and failure reason in `metadata.json`. Numbering is also
 now stable per §13 (publish day then creation order).
 
+**§9's QA pass-rate metric landed** (`Application/Quality/QaPassRateCalculator.cs`, pure
+function like every other calculator in this codebase): what fraction of terminal items
+were approved on the first quality attempt, with no remediation restart — the number the
+plan's own 60% floor is judged against. `GET /api/campaigns/{id}/qa-pass-rate`.
+
 **Not yet built:** the review UI (no frontend exists at all yet), the weekly email,
-retention/tenant-deletion jobs.
+retention/tenant-deletion jobs, a tenant/brand-wide (not just per-campaign) pass-rate
+aggregate, and §27's eval scenarios (need golden fixture images — VisualQA catching mutated
+screenshots, false-positive rate ≤ 0.15).

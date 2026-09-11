@@ -983,3 +983,27 @@ across ZIP downloads and email links, which only holds if the ordering is determ
 tied to something that doesn't change between builds.
 
 380 unit, 10 architecture, 88 integration (1 new), 1 workflow test green; full build clean.
+
+### The QA pass-rate metric — §9's headline number, finally computed (`claude`)
+
+`Application/Quality/QaPassRateCalculator.cs`: a pure function, same shape as
+`DeterministicQaSuite`/`RemediationRouter` — takes a snapshot of item state (`Status`,
+`QualityAttempts`), returns a report, no database call inside it, so it is trivially
+unit-tested and reusable later from a tenant-wide dashboard or a nightly eval report without
+change. "First-attempt pass" means `Approved` with `QualityAttempts <= 1` — no remediation
+restart happened. The denominator is terminal items only (`Approved`/`NeedsHumanReview`/
+`Failed`), not every item — one still mid-pipeline is neither a pass nor a miss yet, and
+counting it as a miss would understate an unfinished campaign's rate. `FirstAttemptPassRate`
+is `null`, not `0`, until at least one item is terminal.
+
+Wired up as `GET /api/campaigns/{id}/qa-pass-rate` — campaign-scoped for now. A tenant/brand-
+wide aggregate (querying across campaigns, with a date range) is the natural next step once
+there's a place to show it, but stayed out of scope here since `BrandEndpoints.cs` isn't a
+file this claim owns.
+
+386 unit (6 new), 10 architecture, 90 integration (2 new), 1 workflow test green; full build
+clean.
+
+**Still open, same as before**: the review UI (still no frontend anywhere in this repo), the
+weekly email, retention/tenant-deletion jobs, and §27's eval scenarios (need golden fixture
+images this session has no way to produce cheaply).

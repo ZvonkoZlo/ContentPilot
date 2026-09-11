@@ -252,6 +252,28 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     }
 
     [DockerFact]
+    public async Task A_freshly_triggered_campaign_has_a_null_qa_pass_rate_since_nothing_is_terminal()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 5, 10) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var response = await _client.GetAsync($"/api/campaigns/{campaign!.Id}/qa-pass-rate");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var report = await response.Content.ReadFromJsonAsync<QaPassRateDto>();
+        report!.FirstAttemptPassRate.ShouldBeNull();
+        report.TotalItems.ShouldBe(0);
+    }
+
+    [DockerFact]
+    public async Task An_unknown_campaign_has_no_qa_pass_rate_to_read()
+    {
+        var response = await _client.GetAsync($"/api/campaigns/{Guid.NewGuid()}/qa-pass-rate");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [DockerFact]
     public async Task Cancelling_a_draft_campaign_takes_it_out_of_play()
     {
         var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 15) });
@@ -394,6 +416,8 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     private sealed record RatingDto(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
 
     private sealed record DownloadDto(string Url);
+
+    private sealed record QaPassRateDto(int TotalItems, int TerminalItems, int Approved, int FirstAttemptPasses, int NeedsReview, int Failed, double? FirstAttemptPassRate);
 
     private sealed record TenantDto(Guid Id);
 

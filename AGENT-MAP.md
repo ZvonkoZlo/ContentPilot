@@ -48,7 +48,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
-| 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired into the live loop; still open: QA pass-rate metric, §27 evals, carousel continuity |
+| 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired in; QA pass-rate metric (`QaPassRateCalculator`) done; still open: §27 evals, carousel continuity |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
 | 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` + `CampaignZipBuilder`, browse/rating/download API done; review UI (no frontend exists yet) and weekly email not started |
 | 9 — Hardening, cost calibration, evals | 1342 | unclaimed |
@@ -126,7 +126,9 @@ judgement is gate 2, 7xx marketing judgement is gate 3; `QaFindingCodes.GateFor`
 —, `QaSeverity`, `QaGate`, `QaOutcome`, `QualityReview` — one row per gate per attempt).
 `Application/Quality/` (`DeterministicQaSuite` — gate 1, `DeterministicQaInput`/
 `DeterministicQaOptions`, `QaReport`, `Checks/` — `LayoutChecks`, `ContrastCheck`,
-`LogoChecks`, `FidelityChecks`, `FileSanityChecks`). Gates 2/3 are `VisualQaAgent`/
+`LogoChecks`, `FidelityChecks`, `FileSanityChecks`; `QaPassRateCalculator` — §9's headline
+metric, first-attempt pass rate over a set of items, pure function, exposed via
+`GET /api/campaigns/{id}/qa-pass-rate`). Gates 2/3 are `VisualQaAgent`/
 `MarketingQaAgent` under Agents above, not here — they're agents, not pure checks. EF
 configuration in `Infrastructure/Persistence/Configurations/
 QualityConfigurations.cs`. Calibration harness and threshold rationale:

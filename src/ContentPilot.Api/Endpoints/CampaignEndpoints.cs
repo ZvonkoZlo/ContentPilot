@@ -1,5 +1,6 @@
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Application.Campaigns;
+using ContentPilot.Application.Quality;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Packaging;
 using ContentPilot.Infrastructure.Campaigns;
@@ -144,6 +145,28 @@ public static class CampaignEndpoints
             "Builds (or reuses a cached) ZIP of the whole campaign and returns a short-lived " +
             "presigned download URL. The ZIP is rebuilt automatically the next time this is " +
             "called after the package itself changes (an item approved late, say).");
+
+        group.MapGet("/{id:guid}/qa-pass-rate", async (Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var exists = await db.ContentCampaigns.AsNoTracking().AnyAsync(c => c.Id == id, ct);
+
+            if (!exists)
+            {
+                return Results.NotFound();
+            }
+
+            var items = await db.ContentItems
+                .AsNoTracking()
+                .Where(i => i.CampaignId == id)
+                .Select(i => new QaPassRateItem { Status = i.Status, QualityAttempts = i.QualityAttempts })
+                .ToListAsync(ct);
+
+            return Results.Ok(QaPassRateCalculator.Calculate(items));
+        })
+        .WithSummary(
+            "§9's headline QA metric for one campaign: what fraction of terminal items were " +
+            "approved on their first quality attempt, with no remediation restart. Null " +
+            "until at least one item reaches a terminal state.");
 
         group.MapPost("/{id:guid}/items/{itemId:guid}/rating", async (
             Guid id, Guid itemId, RateItemRequest request, AppDbContext db, IUnitOfWork uow, IClock clock, CancellationToken ct) =>
