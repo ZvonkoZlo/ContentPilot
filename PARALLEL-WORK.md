@@ -1007,3 +1007,43 @@ clean.
 **Still open, same as before**: the review UI (still no frontend anywhere in this repo), the
 weekly email, retention/tenant-deletion jobs, and §27's eval scenarios (need golden fixture
 images this session has no way to produce cheaply).
+
+### Phase 8/§11 — retention, enforced nightly (`claude`)
+
+`RetentionJobHandler` (`Infrastructure/Jobs/`), same self-rescheduling shape as
+`CampaignTriggerScanJobHandler`/`CampaignTriggerReconcileJobHandler`: fires once daily,
+iterates every active tenant (cross-tenant scope to list them, then `SetTenant` per
+iteration for the scoped queries), enqueues its own next run.
+
+Two windows, both from `TenantLimits` (already existed on `Tenant`, just unenforced until
+now):
+
+- **`AttemptArtefactRetentionDays`** — once an item is terminal (`IsTerminal`), every
+  `ContentAsset` that is not the winning one (`BestAssetId` when set, else the highest
+  attempt number — the exact rule `CampaignPackager.ResolveAssetAsync` already uses) has its
+  object-storage bytes deleted once past the window. An item still mid-pipeline is never
+  touched, even if one of its assets happens to already be old.
+- **`ModelPayloadRetentionDays`** — an `AgentRun`'s archived `InputRef`/`OutputRef` object
+  past the window is deleted.
+
+**Neither `ContentAsset` nor `AgentRun` rows are ever written to** — both are `IAppendOnly`,
+and the DbContext's `GuardAppendOnly` refuses a `Modified`/`Deleted` state outright. Only the
+object-storage bytes the row references are deleted; the row itself, its hashes, and its
+cost metrics survive forever, which is the correct trade — the audit trail (`what happened,
+what it cost`) is permanent, only the payload bytes expire.
+
+**Documented tradeoff, not an oversight**: because no row can be marked "already purged"
+without a write the guard forbids, a stale row is re-queried and re-requested for deletion
+every night forever. An S3 delete on an already-gone key is a cheap no-op, so this doesn't
+cost more per run over time — but the Postgres query that finds candidate rows does grow
+with total historical volume. Fine at the plan's own MVP scale (§28: one VM, one tenant,
+eight items a week); the honest fix if it ever matters is a small non-append-only sidecar
+table recording purged artefact IDs, not a change to either entity.
+
+**Not built**: a tenant-deletion job (remove a whole tenant's storage prefix + cascade every
+row) — a different, rarer operation from nightly retention, explicitly named separately in
+§11 ("Tenant deletion removes the storage prefix and cascades the rows"). Left out of this
+pass since it has no trigger mechanism yet (no admin UI, no endpoint) and is destructive
+enough to want its own deliberate design rather than being folded into the nightly job.
+
+386 unit, 10 architecture, 94 integration (4 new), 1 workflow test green; full build clean.

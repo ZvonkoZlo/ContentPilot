@@ -44,6 +44,12 @@ await using (var scope = host.Services.CreateAsyncScope())
         await jobQueue.EnqueueAsync(new CampaignTriggerReconcilePayload(), tenantId: null);
     }
 
+    // §11's retention job is the same self-rescheduling shape as the two above.
+    if (!await db.Jobs.AnyAsync(j => j.Type == JobTypeName.For<EnforceRetentionPayload>() && (j.State == JobState.Pending || j.State == JobState.Leased)))
+    {
+        await jobQueue.EnqueueAsync(new EnforceRetentionPayload(), tenantId: null);
+    }
+
     await db.SaveChangesAsync();
 }
 

@@ -50,7 +50,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired in; QA pass-rate metric (`QaPassRateCalculator`) done; still open: §27 evals, carousel continuity |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
-| 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` + `CampaignZipBuilder`, browse/rating/download API done; review UI (no frontend exists yet) and weekly email not started |
+| 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` + `CampaignZipBuilder`, browse/rating/download API, `RetentionJobHandler` all done; review UI (no frontend exists yet) and weekly email not started |
 | 9 — Hardening, cost calibration, evals | 1342 | unclaimed |
 | 10 — Post-MVP options | 1359 | not started |
 
@@ -169,7 +169,10 @@ behind every way a campaign starts; `Application/Campaigns/CampaignWeek.cs` is t
 per-brand-timezone 06:00-Monday check) and `CampaignTriggerReconcileJobHandler.cs` (daily
 safety net) are §21's scheduled and reconciled triggers — both self-rescheduling jobs on the
 existing queue, a deliberate substitution for the plan's named Hangfire (see
-PARALLEL-WORK.md for the reasoning); `Worker/Program.cs` seeds the first occurrence of each
+PARALLEL-WORK.md for the reasoning). `Infrastructure/Jobs/RetentionJobHandler.cs` is the
+same self-rescheduling shape, daily, enforcing §11's per-tenant retention windows — see the
+Quality/Packaging note above and PARALLEL-WORK.md for why it never touches a row, only
+object-storage bytes. `Worker/Program.cs` seeds the first occurrence of each of these three
 idempotently on startup. `Api/Endpoints/CampaignEndpoints.cs` — `POST /api/campaigns`,
 `GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items`, `POST
 /api/campaigns/{id}/cancel`, `GET /api/campaigns/{id}/package`, `POST

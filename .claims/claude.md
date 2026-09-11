@@ -124,7 +124,19 @@ function like every other calculator in this codebase): what fraction of termina
 were approved on the first quality attempt, with no remediation restart — the number the
 plan's own 60% floor is judged against. `GET /api/campaigns/{id}/qa-pass-rate`.
 
-**Not yet built:** the review UI (no frontend exists at all yet), the weekly email,
-retention/tenant-deletion jobs, a tenant/brand-wide (not just per-campaign) pass-rate
-aggregate, and §27's eval scenarios (need golden fixture images — VisualQA catching mutated
-screenshots, false-positive rate ≤ 0.15).
+**Retention landed too.** `RetentionJobHandler` (self-rescheduling daily job, same shape as
+the trigger scan/reconciler) purges §11's two windows per tenant: an attempt's rendered
+bytes past `TenantLimits.AttemptArtefactRetentionDays` (the winning attempt — `BestAssetId`
+or highest attempt number — is never purged, only superseded ones), and an `AgentRun`'s
+archived prompt/response past `ModelPayloadRetentionDays`. Neither `ContentAsset` nor
+`AgentRun` rows are ever touched — both are append-only — only the object-storage bytes they
+reference. Known tradeoff documented on the handler: without a row to mark "purged", a stale
+row is re-queried and re-requested for deletion every night forever (cheap no-ops, but
+Postgres query cost grows with total historical volume) — fine at MVP scale, would need a
+small non-append-only sidecar table if it ever mattered.
+
+**Not yet built:** the review UI (no frontend exists at all yet), the weekly email, a
+tenant-deletion job (remove a whole tenant's storage prefix + cascade rows — different from
+nightly retention), a tenant/brand-wide (not just per-campaign) pass-rate aggregate, and
+§27's eval scenarios (need golden fixture images — VisualQA catching mutated screenshots,
+false-positive rate ≤ 0.15).

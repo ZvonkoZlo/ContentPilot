@@ -131,6 +131,7 @@ public static class DependencyInjection
         services.AddScoped<IJobHandler, CampaignWorkflowJobHandler>();
         services.AddScoped<IJobHandler, CampaignTriggerScanJobHandler>();
         services.AddScoped<IJobHandler, CampaignTriggerReconcileJobHandler>();
+        services.AddScoped<IJobHandler, RetentionJobHandler>();
 
         services.AddHostedService<JobDispatcher>();
         services.AddHostedService<JobReaper>();
