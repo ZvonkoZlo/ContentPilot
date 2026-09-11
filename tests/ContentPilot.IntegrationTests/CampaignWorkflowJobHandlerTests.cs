@@ -255,9 +255,14 @@ public sealed class CampaignWorkflowJobHandlerTests(ContentPilotFixture fixture)
             NullLogger<CampaignWorkflowJobHandler>.Instance);
     }
 
+    // The first topic is deliberately distinct from ContentItemWorkflowJobHandlerTests'
+    // fixture topic ("Your chair sits empty...") — that test's item is really approved
+    // through the job handler and now genuinely writes a ContentHistoryEntry (§14), and the
+    // two suites share the golden tenant's brand, so an identical topic here would fail
+    // this file's own PlanValidator novelty check as a same-week repeat of itself.
     private static string PlanJson() => """
         {"theme":"A week about never losing a booking","items":[
-          {"type":"StaticPost","topic":"Your chair sits empty when someone cancels at 9pm","pillar":"problem-solution","objective":"Show automatic rebooking.","publish_day":"Tuesday","fact_keys":[]},
+          {"type":"StaticPost","topic":"A no-show at 9pm still gets automatically rebooked","pillar":"problem-solution","objective":"Show automatic rebooking.","publish_day":"Tuesday","fact_keys":[]},
           {"type":"StaticPost","topic":"Clients who book at midnight still get confirmed","pillar":"feature-highlight","objective":"Highlight always-on booking.","publish_day":"Thursday","fact_keys":[]},
           {"type":"Carousel","topic":"Five ways salons lose bookings without noticing","pillar":"problem-solution","objective":"Walk through common failure points.","publish_day":"Saturday","fact_keys":[]},
           {"type":"Reel","topic":"A cancelled slot filling itself in real time","pillar":"social-proof","objective":"Show the rebooking flow in action.","publish_day":"Tuesday","fact_keys":[]}

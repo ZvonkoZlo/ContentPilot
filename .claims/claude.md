@@ -135,6 +135,19 @@ row is re-queried and re-requested for deletion every night forever (cheap no-op
 Postgres query cost grows with total historical volume) — fine at MVP scale, would need a
 small non-append-only sidecar table if it ever mattered.
 
+**A real, silent gap found and fixed: `ContentHistoryEntry` was never written.** Every piece
+of §14's content-memory system (`ContentMemoryReader`, the strategist's recent-content
+context, `PlanValidator`'s novelty check) has existed since Phase 3, but nothing in the
+actual pipeline ever wrote a row — only a test file seeded one directly. In production this
+meant the strategist would silently repeat topics forever, campaign after campaign, with the
+novelty check never once firing on real data. Fixed in
+`ContentItemWorkflowJobHandler.ApplyAsync`'s `Complete` case: an approved item now writes a
+`ContentHistoryEntry` (topic/hook SimHashes, template id from the Directing step's result,
+the hook taken as the copy's first slot). Fixing this immediately surfaced a genuine test
+collision — two integration test files shared the exact same fixture topic text on the same
+golden brand, which the (now-working) novelty check correctly rejected as a same-week
+repeat; fixed by giving one of them a distinct topic, not by weakening the check.
+
 **Not yet built:** the review UI (no frontend exists at all yet), the weekly email, a
 tenant-deletion job (remove a whole tenant's storage prefix + cascade rows — different from
 nightly retention), a tenant/brand-wide (not just per-campaign) pass-rate aggregate, and

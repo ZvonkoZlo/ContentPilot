@@ -47,7 +47,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 2 — Renderer and static templates | 1206 | done |
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
-| 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
+| 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost, now also writing `ContentHistoryEntry` on approval (§14); only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired in; QA pass-rate metric (`QaPassRateCalculator`) done; still open: §27 evals, carousel continuity |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
 | 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` + `CampaignZipBuilder`, browse/rating/download API, `RetentionJobHandler` all done; review UI (no frontend exists yet) and weekly email not started |
@@ -117,7 +117,12 @@ last. `Infrastructure/Quality/ImageThumbnailer.cs` (Magick.NET) makes the 150px 
 VisualQA needs.
 
 **Content memory** — `Application/ContentMemory/SimHash.cs`;
-`Infrastructure/Branding/ContentMemoryReader.cs`.
+`Infrastructure/Branding/ContentMemoryReader.cs` (reads `ContentHistory`, feeds the
+strategist's recent-content context and `PlanValidator`'s novelty check). Written by
+`ContentItemWorkflowJobHandler.RecordContentHistoryAsync`, called from `ApplyAsync`'s
+`Complete` case — the write side was missing for a long stretch of this project's history
+(see PARALLEL-WORK.md); every approved item now leaves a `ContentHistoryEntry` with its
+topic/hook SimHashes and the Directing step's chosen template id.
 
 **Quality (gates 1–3)** — `Domain/Quality/` (`QaFinding` — has an optional `Confidence`, null
 for deterministic findings, set by model gates; `QaFindingCode` — append-only and grouped by

@@ -70,6 +70,16 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         reviews.Select(r => r.Gate).ShouldBe([QaGate.Deterministic, QaGate.Visual, QaGate.Marketing], ignoreOrder: true);
         reviews.ShouldAllBe(r => r.Findings.Count == 0,
             string.Join(" | ", reviews.Select(r => $"{r.Gate}: {string.Join(", ", r.Findings.Select(f => $"{f.Code}({f.Detail})"))}")));
+
+        // §14's content memory: an approved item must leave a ContentHistoryEntry, or the
+        // strategist's novelty check and recent-context window both silently see nothing,
+        // campaign after campaign, no matter how much has actually been published.
+        var history = await db.ContentHistory.AsNoTracking().SingleAsync(h => h.ContentItemId == fixtureData.Item.Id);
+        history.Topic.ShouldBe(fixtureData.Item.Topic);
+        history.Hook.ShouldBe("Fill the empty slots in your week"); // the scripted copywriter's headline
+        history.TopicSimHash.ShouldNotBe(0);
+        history.HookSimHash.ShouldNotBe(0);
+        history.TemplateId.ShouldBe(Manifest.TemplateId);
     }
 
     [DockerFact]

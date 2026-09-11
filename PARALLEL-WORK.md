@@ -1047,3 +1047,42 @@ pass since it has no trigger mechanism yet (no admin UI, no endpoint) and is des
 enough to want its own deliberate design rather than being folded into the nightly job.
 
 386 unit, 10 architecture, 94 integration (4 new), 1 workflow test green; full build clean.
+
+### A real gap found and fixed: `ContentHistoryEntry` was never written (`claude`)
+
+Auditing what still uses `ContentHistoryEntry` turned up something worth flagging loudly:
+`grep -rln "ContentHistoryEntry" src/` found only the entity itself, its EF configuration,
+and its migrations — no production code anywhere ever constructs one. `ContentMemoryReader`
+(§14, built in Phase 3) has been reading from this table since early in the project, and
+`PlanValidator`'s novelty check depends on it, but the write side simply never existed —
+only `tests/ContentPilot.IntegrationTests/ContentMemoryTests.cs` ever seeded a row, by hand,
+for its own test. In a real deployment this means the strategist's "don't repeat recent
+topics" guarantee was pure theory: every campaign would see an empty history, forever, no
+matter how many weeks had actually run.
+
+Fixed in `ContentItemWorkflowJobHandler.ApplyAsync`'s `NextActionKind.Complete` case — the
+only place an item genuinely becomes Approved — via a new `RecordContentHistoryAsync`
+helper: looks up the campaign's `BrandId` (the `campaign` parameter reaching this branch is
+`default!`, elided deliberately by the existing code before this change, so a direct query
+was the smallest change rather than threading a real campaign through three call sites),
+loads the winning attempt's `CopySet` (`LoadCopySetAsync`, already existed) to take the hook
+as its first slot's text, loads the `DirectingResult` (`LoadDirectingResultAsync`, already
+existed) for the template id, and adds a `ContentHistoryEntry` with `SimHash.Compute` over
+both topic and hook. The entity itself needed no change — every constructor parameter it
+already declared was exactly what was needed once assembled.
+
+**Fixing this immediately proved the novelty check works**: two integration test files
+(`ContentItemWorkflowJobHandlerTests`'s approved-item fixture and
+`CampaignWorkflowJobHandlerTests`'s scripted plan) happened to share the exact fixture topic
+text ("Your chair sits empty when someone cancels at 9pm") on the same golden tenant's
+brand. The moment approval started actually writing history, `PlanValidator`'s novelty
+check correctly rejected the second file's identical topic as a same-week repeat — the
+system working as designed, not a bug in the fix. Resolved by giving
+`CampaignWorkflowJobHandlerTests`'s fixture a distinct topic, with a comment explaining why,
+rather than touching the validator.
+
+New assertion added to `A_clean_render_carries_a_static_post_all_the_way_to_approved`:
+checks the `ContentHistoryEntry` row exists with the right topic, hook, non-zero SimHashes,
+and template id.
+
+386 unit, 10 architecture, 94 integration, 1 workflow test green; full build clean.

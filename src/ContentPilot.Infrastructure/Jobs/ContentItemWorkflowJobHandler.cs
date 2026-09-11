@@ -4,6 +4,7 @@ using ContentPilot.Application.Agents;
 using ContentPilot.Application.Ai;
 using ContentPilot.Application.Brand;
 using ContentPilot.Application.Capabilities;
+using ContentPilot.Application.ContentMemory;
 using ContentPilot.Application.Jobs;
 using ContentPilot.Application.Orchestration;
 using ContentPilot.Application.Prompts;
@@ -182,6 +183,7 @@ public sealed class ContentItemWorkflowJobHandler(
             case NextActionKind.Complete:
                 item.Approve();
                 run.Complete(now);
+                await RecordContentHistoryAsync(item, run, attempt, now, ct);
                 return true;
 
             case NextActionKind.NeedsHumanReview:
@@ -648,6 +650,29 @@ public sealed class ContentItemWorkflowJobHandler(
                  s.Attempt == attempt && s.Outcome == WorkflowStepOutcome.Succeeded, ct);
 
         return step?.ResultJson is null ? null : JsonSerializer.Deserialize<CopySet>(step.ResultJson, Json);
+    }
+
+    /// <summary>
+    /// §14's content memory, written the moment an item goes Approved — never when it is
+    /// merely generated, because output that failed QA should not block a future topic.
+    /// Without this row, the strategist's novelty check and "what have we said recently"
+    /// context both silently see an empty history forever, no matter how many campaigns
+    /// actually ran.
+    /// </summary>
+    private async Task RecordContentHistoryAsync(ContentItem item, WorkflowRun run, int attempt, DateTimeOffset now, CancellationToken ct)
+    {
+        var brandId = await db.ContentCampaigns.AsNoTracking()
+            .Where(c => c.Id == item.CampaignId)
+            .Select(c => c.BrandId)
+            .FirstOrDefaultAsync(ct);
+
+        var copySet = await LoadCopySetAsync(run.Id, attempt, ct);
+        var hook = copySet?.Slots.FirstOrDefault()?.Text ?? item.Topic;
+        var directing = await LoadDirectingResultAsync(run.Id, ct);
+
+        db.ContentHistory.Add(new ContentHistoryEntry(
+            item.TenantId, brandId, item.Id, item.Type, item.Topic, item.Pillar, hook,
+            SimHash.Compute(item.Topic), SimHash.Compute(hook), directing?.TemplateId, now));
     }
 
     private static string ExtensionFor(string mediaType) => mediaType switch
