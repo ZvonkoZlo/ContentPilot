@@ -25,6 +25,7 @@ src/ContentPilot.Infrastructure/Branding/
 src/ContentPilot.Infrastructure/Jobs/
 src/ContentPilot.Infrastructure/Rendering/
 src/ContentPilot.Infrastructure/Persistence/Migrations/
+src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
 tests/ContentPilot.UnitTests/Agents/
 tests/ContentPilot.UnitTests/Ai/
 tests/ContentPilot.UnitTests/Quality/
@@ -33,48 +34,39 @@ tests/ContentPilot.UnitTests/Domain/
 tests/ContentPilot.UnitTests/Rendering/
 tests/ContentPilot.IntegrationTests/AssetContentResolverTests.cs
 tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs
+tests/ContentPilot.IntegrationTests/CampaignWorkflowJobHandlerTests.cs
 tests/ContentPilot.WorkflowTests/
 
 ## notes
 
 **Phase 4 landed** (deterministic QA) — see PARALLEL-WORK.md.
 
-**Phase 5: the loop actually runs.** `ContentItemWorkflowJobHandler`
-(`Infrastructure/Jobs/`) is the caller from §6: leases nothing itself, loads a
-`WorkflowRun`, calls `OrchestratorCore.Decide`, executes the named step, persists the
-result, re-enqueues (job type `advance-content-item-workflow`). Proven end to end by two
-integration tests against real Postgres/MinIO — a clean render reaches `Approved` with real
-`CreativeSpec`/`ContentAsset`/`QualityReview` rows; a render that always overflows converges
-to `NeedsHumanReview` through the actual escalation ladder, not just a unit-tested policy.
+**Phase 5: both halves of the loop run for real now.** `ContentItemWorkflowJobHandler`
+drives one item Directing → Validating. `CampaignWorkflowJobHandler` (job type
+`advance-campaign-workflow`) plans a campaign, fans it into items + their own
+`WorkflowRun`s, and closes the campaign out once every item is terminal —
+`Ready`/`PartiallyReady`/`Failed`, all via `ContentCampaign`'s own already-legal-transition-
+enforcing methods. `POST /api/campaigns` (`Api/Endpoints/CampaignEndpoints.cs`) is the
+manual trigger from §21; `GET .../items` is the review read side. **A `StaticPost`-only
+brand triggered through that endpoint can now go from an API call to an approved, rendered,
+QA-clean image with no further input** — the first time that sentence has been true in this
+codebase. Full detail, including everything explicitly out of scope, across
+PARALLEL-WORK.md's phase 5 sections — there are several; read all of them, oldest first.
 
-Everything from earlier in this phase is now actually called from somewhere:
-`ItemStateMachine` (now enforced via a `TransitionTo` helper before every `item.MoveTo`,
-not only tested), `RemediationRouter`, `OrchestratorCore.Decide`, `IRendererClient`,
-`IAssetContentResolver`, `SpecAssembler`, `CopywriterAgent`, `TemplateSelector`,
-`DeterministicQaSuite`. Migration `WorkflowStepResult` added `WorkflowStep.ResultJson` (a
-compact per-step decision record — Directing's chosen template, Writing's `CopySet` — so a
-crash mid-pass does not redo billable work or lose a decision a later step needs).
+**What's left for "generate week" to run fully unattended:**
+1. The Hangfire weekly cron — the trigger path exists, nothing calls it on a schedule.
+2. Budget reservation and enforcement (§24) wired into `WorkflowDecisionContext.Budget`.
+3. Carousel and reel composition; image generation (no client exists).
+4. Real packaging (Phase 8) — campaign completion currently skips straight past it.
 
-**Read PARALLEL-WORK.md's phase 5 sections in full before touching this**, especially the
-"one simplification worth knowing" (steps loop inside one job invocation rather than each
-getting its own queue round-trip) and the JobDispatcher gotcha it surfaced (every registered
-`IJobHandler` is constructed on every dispatch attempt — a rich dependency chain on any job
-type can break dispatch of every job type in a host missing that chain's config; fixed for
-`PingWalkingSkeletonTests`, worth remembering for the next job type someone adds).
-
-**Explicit, stated scope — not silently missing, just not built:**
-- Only `StaticPost` items are driven; carousels/reels go straight to `NeedsHumanReview`.
-- No budget enforcement (`WorkflowDecisionContext.Budget` always null) — attempt/step
-  ceilings apply, cost ceilings do not yet.
-- `AssetGeneration` is a pass-through — no image generation client exists.
-- `Replan` goes to `NeedsHumanReview` — `CampaignWorkflow` does not exist to act on it.
-
-**What's actually left for "generate week" to run unattended:**
-1. `CampaignWorkflow` — nothing creates a `WorkflowRun` or enqueues the first job for an
-   item yet. This handler has no caller in the running system, only in its own tests.
-2. The manual trigger endpoint and the Hangfire weekly cron.
-3. Budget reservation and enforcement (§24), wired into the decision context.
-4. Carousel and reel composition; image generation.
+**One gotcha worth remembering for the next job type**, already hit and fixed once:
+`JobDispatcher.ExecuteAsync` resolves every registered `IJobHandler` on every dispatch
+attempt. A job type with a rich dependency chain (this phase's two handlers both need
+`AgentExecutor` → `ILanguageModelClient` → `ModelProfileRegistry`, which refuses to
+construct with zero configured profiles) can break dispatch of *every* job type in a host
+whose configuration does not fully satisfy that chain — not just its own. Real
+`appsettings.json` always has profiles, so production is unaffected; a minimal test host
+is not, and `PingWalkingSkeletonTests` needed a one-line fix for exactly this.
 
 Holds `migrations: true`. Nobody else runs `dotnet ef migrations add`. Add entities and
 configuration, skip the migration, and say so in PARALLEL-WORK.md — same as phases 3 and 4.

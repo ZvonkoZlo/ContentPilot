@@ -47,7 +47,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 2 — Renderer and static templates | 1206 | done |
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
-| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — item loop runs end to end; no CampaignWorkflow/trigger/cron/budget/carousels/reels |
+| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — API trigger → campaign → items → Approved runs end to end for StaticPost; no cron/budget/carousels/reels/packaging |
 | 6 — Visual QA and Marketing QA | 1285 | unclaimed |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |
@@ -132,16 +132,23 @@ Rendering and Validating a real way to reach the Renderer service, alongside
 `TemplateSelector` for Directing, `SpecAssembler` for SpecAssembly, and
 `DeterministicQaSuite` for Validating's deterministic half.
 
-**The caller** — `Infrastructure/Jobs/ContentItemWorkflowJobHandler.cs` (job type
+**The callers** — `Infrastructure/Jobs/ContentItemWorkflowJobHandler.cs` (job type
 `advance-content-item-workflow`, payload `Application/Jobs/
 AdvanceContentItemWorkflowPayload.cs`) drives a `StaticPost` item's `WorkflowRun` end to
 end: Directing → Writing → SpecAssembly → AssetGeneration → Rendering → Validating,
 looping through as many steps as it can in one job invocation and re-enqueuing only on a
-remediation restart. Proven against real Postgres/MinIO in
-`tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs`. No
-`CampaignWorkflow`, manual trigger, or cron exists yet to actually create a `WorkflowRun`
-and call this — see PARALLEL-WORK.md's phase 5 sections for the full, honestly-scoped list
-of what "generate week" still needs.
+remediation restart. `Infrastructure/Jobs/CampaignWorkflowJobHandler.cs` (job type
+`advance-campaign-workflow`, payload `AdvanceCampaignWorkflowPayload`) plans a campaign with
+`ContentStrategistAgent`, creates each planned item plus its own `WorkflowRun`, enqueues the
+item job for each, and closes the campaign out via `ContentCampaign`'s own transition
+methods once every item is terminal. `Api/Endpoints/CampaignEndpoints.cs` — `POST
+/api/campaigns`, `GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items` — is the manual
+trigger from §21 and its read side. Proven end to end against real Postgres/MinIO in
+`tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs`,
+`CampaignWorkflowJobHandlerTests.cs`, and the campaign tests appended to
+`ApiEndpointTests.cs`. No Hangfire cron, budget enforcement, carousel/reel composition,
+image generation, or real packaging (Phase 8) exists yet — see PARALLEL-WORK.md's phase 5
+sections for the full, honestly-scoped list.
 
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation
@@ -180,7 +187,8 @@ configurations mirror those under `Infrastructure/Persistence/Configurations/`
 does not save.
 
 **API endpoints** — `Api/Endpoints/`: `TenantEndpoints`, `BrandEndpoints`,
-`BrandBrainEndpoints`, `AssetEndpoints`, `DiagnosticsEndpoints`.
+`BrandBrainEndpoints`, `AssetEndpoints`, `DiagnosticsEndpoints`, `CampaignEndpoints` (the
+manual "generate now" trigger — see Orchestration above).
 
 ## Tests — five suites, know which one you need
 

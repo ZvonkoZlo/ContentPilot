@@ -582,3 +582,51 @@ Image generation.
 
 354 unit tests unchanged, 57 integration tests (2 new, plus the `PingWalkingSkeletonTests`
 fix), 10 architecture and the workflow smoke test green; full build clean.
+
+### Phase 5: the campaign half, and a manual trigger (`claude`)
+
+`CampaignWorkflowJobHandler` (`Infrastructure/Jobs/`, job type `advance-campaign-workflow`)
+is the other half of §6's caller: plans a campaign with the strategist, creates a
+`ContentItem` and its own `WorkflowRun` for every planned item, enqueues each item's first
+`AdvanceContentItemWorkflowPayload`, and — once every item has reached a terminal state —
+closes the campaign out. It never touches `ContentItemStatus`, only `ContentCampaign.Status`,
+whose own transition methods (`BeginPlanning`, `PlanAccepted`, `BeginPackaging`, `Complete`,
+`Fail`) already enforce §7's campaign-level legality — unlike `ContentItem.MoveTo`, this one
+already guarded illegal transitions before this phase touched it, so no campaign-level
+`ItemStateMachine` equivalent was needed.
+
+`POST /api/campaigns` (`Api/Endpoints/CampaignEndpoints.cs`) is the manual trigger from §21:
+freezes the brand version, creates the `Draft` campaign, enqueues the first job, all in one
+transaction. `GET /api/campaigns/{id}` and `GET /api/campaigns/{id}/items` are the read side
+a review UI needs. The weekly Hangfire cron this system will eventually have is meant to
+call the exact same trigger path — a scheduled and a manual "generate now" are never two
+code paths — but the cron itself is not built.
+
+**Six new integration tests** exercise fan-out (exact quota, one `WorkflowRun` per item),
+retry-idempotency (a second call after items already exist does not re-plan), both
+completion outcomes (`Ready` when every item is `Approved`, `PartiallyReady` when one needed
+a human — proving that outcome is a real path, not just documented), a campaign that stays
+open while items are still in flight, and a strategist whose output cannot be repaired into
+a valid plan failing the campaign with a reason rather than hanging. Four more test the HTTP
+trigger itself: success, the unique-per-week conflict, an unknown brand, and a freshly
+triggered campaign's item list. Deliberately, the item pipeline itself is not re-exercised
+here — items are promoted to their terminal status directly, since
+`ContentItemWorkflowJobHandlerTests` already proves that half.
+
+**Scope, stated plainly.** No `WorkflowRun` is created at campaign scope — the entity's own
+transition guard already does what this handler needs, and nothing here needs a
+campaign-level attempt counter or deadline yet. "Packaging" is one instantaneous transition,
+not Phase 8's real ZIP/manifest step. `Replan` (repetitive content) still has nowhere to go
+but `NeedsHumanReview`, because nothing here re-invokes the strategist for a single item.
+
+**What's left for "generate week" to run fully unattended:** the Hangfire weekly cron
+(the trigger path exists; nothing calls it on a schedule yet), budget reservation and
+enforcement, carousel and reel composition, image generation, and real packaging (Phase 8).
+A brand with a `StaticPost`-only quota, triggered through `POST /api/campaigns`, is now the
+first thing in this codebase that can go from an API call to an approved, rendered,
+QA-clean image with no further human input — everything after that call is exactly the two
+job handlers this phase built, running for real.
+
+354 unit tests unchanged, 67 integration tests (10 new), 10 architecture and the workflow
+smoke test green against real Postgres and MinIO, confirmed on repeated runs; full build
+clean.

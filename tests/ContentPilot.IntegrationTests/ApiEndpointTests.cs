@@ -198,6 +198,58 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
         (await stranger.GetAsync($"/api/brands/{_brandId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
+    [DockerFact]
+    public async Task Triggering_a_campaign_enqueues_it_and_returns_its_id()
+    {
+        var response = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync());
+        var campaign = await response.Content.ReadFromJsonAsync<CampaignDto>();
+
+        campaign!.Status.ShouldBe("Draft");
+        campaign.BrandId.ShouldBe(_brandId);
+
+        var read = await _client.GetAsync($"/api/campaigns/{campaign.Id}");
+        read.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [DockerFact]
+    public async Task A_second_trigger_for_the_same_week_is_a_conflict_not_a_duplicate()
+    {
+        var weekStart = new DateOnly(2032, 3, 1);
+
+        var first = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart });
+        first.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        var second = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart });
+
+        second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [DockerFact]
+    public async Task Triggering_a_campaign_for_an_unknown_brand_is_not_found()
+    {
+        var response = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = Guid.NewGuid() });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [DockerFact]
+    public async Task A_freshly_triggered_campaign_has_no_items_yet()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 8) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var items = await _client.GetAsync($"/api/campaigns/{campaign!.Id}/items");
+
+        items.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await items.Content.ReadFromJsonAsync<List<ItemDto>>()).ShouldBeEmpty();
+    }
+
+    private sealed record CampaignDto(Guid Id, Guid BrandId, string Status);
+
+    private sealed record ItemDto(Guid Id, string Topic);
+
     private sealed record TenantDto(Guid Id);
 
     private sealed record BrandDto(Guid Id);

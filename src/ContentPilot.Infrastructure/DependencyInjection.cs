@@ -124,6 +124,7 @@ public static class DependencyInjection
     {
         services.AddScoped<IJobHandler, PingJobHandler>();
         services.AddScoped<IJobHandler, ContentItemWorkflowJobHandler>();
+        services.AddScoped<IJobHandler, CampaignWorkflowJobHandler>();
 
         services.AddHostedService<JobDispatcher>();
         services.AddHostedService<JobReaper>();
