@@ -53,9 +53,17 @@ QA-clean image with no further input** — the first time that sentence has been
 codebase. Full detail, including everything explicitly out of scope, across
 PARALLEL-WORK.md's phase 5 sections — there are several; read all of them, oldest first.
 
+**§24 budget enforcement is wired now too** — `BudgetGuard.CheckBoth` runs before Writing
+(the one billable step this pass drives), using real `CostEntry` sums plus live
+`BudgetReservation` rows against `Tenant.Limits`. A pre-existing, simpler flat-campaign-cap
+check already lived in `BudgetedLanguageModelClient` from Phase 3 (`AiOptions:
+CampaignBudgetMicroCents`, no reservation, no per-item ceiling) — the two are not
+integrated with each other and both still run; see PARALLEL-WORK.md's newest phase 5
+section for the full reasoning and what deciding between them would mean.
+
 **What's left for "generate week" to run fully unattended:**
 1. The Hangfire weekly cron — the trigger path exists, nothing calls it on a schedule.
-2. Budget reservation and enforcement (§24) wired into `WorkflowDecisionContext.Budget`.
+2. Rendering itself is still not metered or budget-checked — only Writing is.
 3. Carousel and reel composition; image generation (no client exists).
 4. Real packaging (Phase 8) — campaign completion currently skips straight past it.
 

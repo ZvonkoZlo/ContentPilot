@@ -47,7 +47,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 2 — Renderer and static templates | 1206 | done |
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
-| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — API trigger → campaign → items → Approved runs end to end for StaticPost; no cron/budget/carousels/reels/packaging |
+| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — API trigger → campaign → items → Approved runs end to end for StaticPost, §24 budget enforced on Writing; no cron/carousels/reels/packaging |
 | 6 — Visual QA and Marketing QA | 1285 | unclaimed |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |

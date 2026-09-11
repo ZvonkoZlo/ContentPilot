@@ -630,3 +630,47 @@ job handlers this phase built, running for real.
 354 unit tests unchanged, 67 integration tests (10 new), 10 architecture and the workflow
 smoke test green against real Postgres and MinIO, confirmed on repeated runs; full build
 clean.
+
+### Phase 5: §24 budget enforcement, wired for real (`claude`)
+
+`ContentItemWorkflowJobHandler` now calls `BudgetGuard.CheckBoth` before the one billable
+step this pass drives — Writing — using real sums (`CostEntry` for both item and campaign
+scope) plus live `BudgetReservation` rows, against `Tenant.Limits.MaxCostPerItemMicroCents`
+and `MaxCostPerCampaignMicroCents`. A reservation is written immediately before the
+`AgentExecutor` call and released immediately after (success or `AgentValidationException`),
+so a sibling item's own Writing step racing the same campaign ceiling sees this call's
+estimate as already-spoken-for rather than reading the same "spent so far" figure this one
+did — the exact race `BudgetReservation` exists to close. The estimate itself
+(`EstimateWritingCostMicroCents`) is a worst case, not a forecast: the copywriter's
+configured `MaxOutputTokens` plus a conservative input-token guess, priced through
+`ModelProfile.PriceOf` — reserving a typical case rather than the worst one would leave the
+budget it claims to protect unprotected on the calls that actually run long.
+
+**One thing worth knowing that this work surfaced, not introduced:** the LLM layer already
+had its own, simpler cost enforcement from Phase 3 — `BudgetedLanguageModelClient` refuses a
+call once a campaign's summed `CostEntry` reaches a single flat `AiOptions:CampaignBudgetMicroCents`
+ceiling, with no reservation and no per-item ceiling. That decorator is still in the chain
+and still runs on every model call regardless of this work; what is new here is the §24
+per-item *and* per-campaign reserve-then-commit check specifically, sitting in the
+orchestrator's own decision path (`WorkflowDecisionContext.Budget`) rather than inside the
+model client. The two do not conflict — either one refusing is enough to stop a call — but
+they are not integrated with each other, and a future pass should decide whether the flat
+campaign cap becomes redundant with `TenantLimits.MaxCostPerCampaignMicroCents` or the two
+stay deliberately separate (a hard vendor-agnostic ceiling versus a per-tenant one).
+
+**A real test-isolation bug found and fixed along the way, worth remembering:** the new
+budget test tightened `TenantLimits` on the golden tenant to prove the refusal path, and the
+golden tenant is shared and idempotent across every test in the whole `IntegrationTests`
+collection, which runs sequentially precisely so containers are not corrupted across tests.
+A mutation left in place bled into whichever test happened to run next and broke it in a
+way that had nothing to do with what that test was checking. Fixed by restoring
+`TenantLimits.Default` at the end of the budget test; any future test that mutates a shared
+fixture's state needs to do the same.
+
+Rendering itself is still not metered or budget-checked — only Writing is, since it is the
+only billable step this pass drives. Everything else from earlier phase 5 notes (the
+Hangfire cron, carousel/reel composition, image generation, real packaging) is unchanged.
+
+354 unit tests unchanged, 68 integration tests (1 new), 10 architecture and the workflow
+smoke test green against real Postgres and MinIO, confirmed stable across three consecutive
+full runs; full build clean.

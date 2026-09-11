@@ -67,6 +67,38 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
     }
 
     [DockerFact]
+    public async Task An_item_ceiling_too_small_for_even_one_writing_call_sends_it_to_human_review_before_spending()
+    {
+        // A ceiling of one micro-cent cannot possibly cover the copywriter's estimated
+        // worst-case cost, so the reserve-then-commit check in §24 has to refuse the call
+        // before the model is ever reached — the whole point of checking first.
+        var tightLimits = Domain.Tenancy.TenantLimits.Default with { MaxCostPerItemMicroCents = 1 };
+        var fixtureData = await SetupAsync(new FakeRendererClient(Manifest, alwaysOverflow: false), tightLimits);
+        await using var _scope = fixtureData.Scope;
+
+        await AdvanceAsync(fixtureData);
+
+        var db = fixtureData.Scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var reloaded = await db.ContentItems.AsNoTracking().SingleAsync(i => i.Id == fixtureData.Item.Id);
+        var run = await db.WorkflowRuns.AsNoTracking().SingleAsync(r => r.EntityId == fixtureData.Item.Id);
+
+        reloaded.Status.ShouldBe(ContentItemStatus.NeedsHumanReview);
+        run.State.ShouldBe(WorkflowRunState.NeedsHumanReview);
+
+        // No CostEntry exists because the model was never actually called, and no
+        // reservation was left dangling — the check happens before either would appear.
+        (await db.CostEntries.CountAsync(e => e.ContentItemId == fixtureData.Item.Id)).ShouldBe(0);
+        (await db.BudgetReservations.CountAsync(r => r.ContentItemId == fixtureData.Item.Id && r.ReleasedAt == null)).ShouldBe(0);
+
+        // The golden tenant is shared, idempotent, and reused by every other test in this
+        // suite (which all run in the same xUnit collection, sequentially) — leaving its
+        // limits tightened would silently break every test that runs after this one.
+        var tenant = await db.Tenants.SingleAsync(t => t.Id == fixtureData.TenantId);
+        tenant.UpdateLimits(Domain.Tenancy.TenantLimits.Default);
+        await db.SaveChangesAsync();
+    }
+
+    [DockerFact]
     public async Task A_render_that_always_overflows_converges_to_human_review_rather_than_looping_forever()
     {
         var fixtureData = await SetupAsync(new FakeRendererClient(Manifest, alwaysOverflow: true));
@@ -109,7 +141,7 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         await ((IJobHandler)data.Handler).HandleAsync(context, payloadJson, CancellationToken.None);
     }
 
-    private async Task<TestFixtureData> SetupAsync(FakeRendererClient renderer)
+    private async Task<TestFixtureData> SetupAsync(FakeRendererClient renderer, Domain.Tenancy.TenantLimits? limits = null)
     {
         // A base date far from every other integration test's campaign weeks — the golden
         // brand is shared process-wide, and (BrandId, WeekStart) is unique.
@@ -125,6 +157,13 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         var version = await brandReader.CaptureVersionAsync(seeded.BrandId);
 
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        if (limits is not null)
+        {
+            var tenant = await db.Tenants.SingleAsync(t => t.Id == seeded.TenantId);
+            tenant.UpdateLimits(limits);
+            await db.SaveChangesAsync();
+        }
 
         var campaign = new ContentCampaign(
             seeded.TenantId, seeded.BrandId, weekStart, CampaignTrigger.Manual, version.VersionId, 200_000_000);
@@ -160,6 +199,8 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
             scope.ServiceProvider.GetRequiredService<IAssetContentResolver>(),
             agentExecutor,
             new CopywriterAgent(),
+            new FakeModelProfileRegistry(),
+            PromptLibrary.LoadEmbedded(),
             NullLogger<ContentItemWorkflowJobHandler>.Instance);
 
         return new TestFixtureData(item, seeded.TenantId, scope, handler);
@@ -171,6 +212,28 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
 
     private sealed record TestFixtureData(
         ContentItem Item, Guid TenantId, AsyncServiceScope Scope, ContentItemWorkflowJobHandler Handler);
+
+    /// <summary>
+    /// A minimal profile registry so the budget estimate has real prices to work with,
+    /// without pulling the fixture's shared DI container (and its own Ai:Profiles gap)
+    /// into a test that otherwise fakes the model directly.
+    /// </summary>
+    private sealed class FakeModelProfileRegistry : IModelProfileRegistry
+    {
+        private readonly ModelProfile _copywriter = new()
+        {
+            Name = "copywriter",
+            Provider = ModelProvider.Anthropic,
+            ModelId = "test-model",
+            MaxOutputTokens = 4000,
+            InputPricePerMillion = 500_000_000,
+            OutputPricePerMillion = 2_500_000_000,
+        };
+
+        public ModelProfile Get(string name) => _copywriter;
+
+        public IReadOnlyCollection<ModelProfile> All => [_copywriter];
+    }
 
     /// <summary>Same scripted-model trick <c>AgentExecutorTests</c> uses: only the model is faked.</summary>
     private sealed class ScriptedModel(params string[] responses) : ILanguageModelClient

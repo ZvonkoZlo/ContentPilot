@@ -6,9 +6,11 @@ using ContentPilot.Application.Brand;
 using ContentPilot.Application.Capabilities;
 using ContentPilot.Application.Jobs;
 using ContentPilot.Application.Orchestration;
+using ContentPilot.Application.Prompts;
 using ContentPilot.Application.Quality;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Quality;
+using ContentPilot.Domain.Tenancy;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Persistence;
@@ -51,6 +53,8 @@ public sealed class ContentItemWorkflowJobHandler(
     IAssetContentResolver assetResolver,
     AgentExecutor agentExecutor,
     CopywriterAgent copywriter,
+    IModelProfileRegistry profiles,
+    PromptLibrary prompts,
     ILogger<ContentItemWorkflowJobHandler> logger)
     : JobHandler<AdvanceContentItemWorkflowPayload>
 {
@@ -96,6 +100,9 @@ public sealed class ContentItemWorkflowJobHandler(
         var campaign = await db.ContentCampaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == item.CampaignId, ct)
             ?? throw new PermanentJobFailureException($"Item {item.Id} references campaign '{item.CampaignId}', which does not exist.");
 
+        var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == item.TenantId, ct)
+            ?? throw new PermanentJobFailureException($"Item {item.Id} references tenant '{item.TenantId}', which does not exist.");
+
         run.Lease(context.JobId.ToString("N"), clock.UtcNow, TimeSpan.FromMinutes(10));
         await db.SaveChangesAsync(ct);
 
@@ -115,6 +122,13 @@ public sealed class ContentItemWorkflowJobHandler(
             var now = clock.UtcNow;
             var attempt = item.QualityAttempts + 1;
 
+            // Writing is the only billable step this pass drives (Directing, SpecAssembly
+            // and rendering itself cost nothing here) — the check runs only in front of it,
+            // rather than pretending every step needs a ledger lookup.
+            var budget = item.Status == ContentItemStatus.Writing
+                ? await CheckWritingBudgetAsync(item, campaign, tenant.Limits, now, ct)
+                : null;
+
             var decision = OrchestratorCore.Decide(new WorkflowDecisionContext
             {
                 Run = run,
@@ -122,7 +136,7 @@ public sealed class ContentItemWorkflowJobHandler(
                 Now = now,
                 QaReport = null,
                 PreviousRemediation = await LoadPreviousRemediationAsync(run.Id, ct),
-                Budget = null,
+                Budget = budget,
             });
 
             var advanced = await ApplyAsync(decision, item, run, campaign, brand, attempt, now, ct);
@@ -335,6 +349,15 @@ public sealed class ContentItemWorkflowJobHandler(
 
             AgentResult<CopySet> result;
 
+            // Reserved for the duration of the call so a sibling item's own Writing step,
+            // racing this one against the same campaign ceiling, sees this estimate as
+            // already-spoken-for rather than reading the same "spent so far" figure this
+            // call did.
+            var reservation = new BudgetReservation(
+                item.TenantId, campaign.Id, item.Id, EstimateWritingCostMicroCents(), now);
+            db.BudgetReservations.Add(reservation);
+            await db.SaveChangesAsync(ct);
+
             try
             {
                 result = await agentExecutor.RunAsync(copywriter, input,
@@ -342,6 +365,9 @@ public sealed class ContentItemWorkflowJobHandler(
             }
             catch (AgentValidationException ex)
             {
+                reservation.Release(clock.UtcNow);
+                await db.SaveChangesAsync(ct);
+
                 // Schema-repair is the executor's own concern (it already tried twice);
                 // exhausting that here is a quality-ladder matter, handled the same way a
                 // deterministic finding would be.
@@ -351,6 +377,8 @@ public sealed class ContentItemWorkflowJobHandler(
 
                 return false;
             }
+
+            reservation.Release(clock.UtcNow);
 
             copySet = result.Value;
             RecordStep(item, run, nameof(ContentItemStatus.Writing), attempt, now,
@@ -607,6 +635,52 @@ public sealed class ContentItemWorkflowJobHandler(
         var step = new WorkflowStep(item.TenantId, run.Id, stepName, attempt, now);
         step.Succeed(now, resultJson: resultJson);
         db.WorkflowSteps.Add(step);
+    }
+
+    /// <summary>
+    /// §24's reserve-then-commit check, scoped to the one billable step this pass drives.
+    /// Directing, SpecAssembly and the renderer call itself cost nothing here, so nothing
+    /// else needs a ledger lookup before running.
+    /// </summary>
+    private async Task<BudgetDecision> CheckWritingBudgetAsync(
+        ContentItem item, ContentCampaign campaign, TenantLimits limits, DateTimeOffset now, CancellationToken ct)
+    {
+        var itemSpent = await db.CostEntries
+            .Where(e => e.ContentItemId == item.Id)
+            .SumAsync(e => (long?)e.AmountMicroCents, ct) ?? 0;
+
+        var campaignSpent = await db.CostEntries
+            .Where(e => e.CampaignId == campaign.Id)
+            .SumAsync(e => (long?)e.AmountMicroCents, ct) ?? 0;
+
+        var itemReserved = await db.BudgetReservations
+            .Where(r => r.ContentItemId == item.Id && r.ReleasedAt == null && r.ExpiresAt > now)
+            .SumAsync(r => (long?)r.EstimateMicroCents, ct) ?? 0;
+
+        var campaignReserved = await db.BudgetReservations
+            .Where(r => r.CampaignId == campaign.Id && r.ReleasedAt == null && r.ExpiresAt > now)
+            .SumAsync(r => (long?)r.EstimateMicroCents, ct) ?? 0;
+
+        return BudgetGuard.CheckBoth(
+            itemSpent, itemReserved, limits.MaxCostPerItemMicroCents,
+            campaignSpent, campaignReserved, limits.MaxCostPerCampaignMicroCents,
+            EstimateWritingCostMicroCents());
+    }
+
+    /// <summary>
+    /// A conservative ceiling, not a forecast: the brand block plus the item's brief rarely
+    /// exceeds this many input tokens, and the model is never asked to write past its own
+    /// profile's output ceiling. Reserving the worst case rather than a typical one is what
+    /// makes the reservation meaningful — a reservation that usually undershoots the real
+    /// bill is not protecting the budget it claims to.
+    /// </summary>
+    private long EstimateWritingCostMicroCents()
+    {
+        var profileName = prompts.Get(copywriter.PromptId).ModelProfile;
+        var profile = profiles.Get(profileName);
+        const int EstimatedInputTokens = BrandBlockRenderer.DefaultTokenBudget + 500;
+
+        return profile.PriceOf(new TokenUsage(EstimatedInputTokens, profile.MaxOutputTokens, 0, 0));
     }
 
     private void RecordFailedStep(ContentItem item, WorkflowRun run, string stepName, int attempt, DateTimeOffset now, string error)
