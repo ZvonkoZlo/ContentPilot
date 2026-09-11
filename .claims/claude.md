@@ -1,9 +1,9 @@
 ---
 agent: claude
-phase: 8
+phase: 9
 branch: main
 status: active
-migrations: true
+migrations: false
 updated: 2026-09-11
 ---
 
@@ -30,7 +30,9 @@ src/ContentPilot.Infrastructure/Jobs/
 src/ContentPilot.Infrastructure/Rendering/
 src/ContentPilot.Infrastructure/Packaging/
 src/ContentPilot.Infrastructure/Persistence/Migrations/
+src/ContentPilot.Infrastructure/Tenancy/
 src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
+src/ContentPilot.Api/Endpoints/AdminEndpoints.cs
 src/ContentPilot.Worker/Program.cs
 tests/ContentPilot.UnitTests/Agents/
 tests/ContentPilot.UnitTests/Ai/
@@ -45,6 +47,8 @@ tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/CampaignWorkflowJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/CampaignTriggerJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/CampaignPackagerTests.cs
+tests/ContentPilot.IntegrationTests/AdminEndpointTests.cs
+tests/ContentPilot.IntegrationTests/RetentionJobHandlerTests.cs
 tests/ContentPilot.WorkflowTests/
 
 ## notes
@@ -148,8 +152,23 @@ collision — two integration test files shared the exact same fixture topic tex
 golden brand, which the (now-working) novelty check correctly rejected as a same-week
 repeat; fixed by giving one of them a distinct topic, not by weakening the check.
 
-**Not yet built:** the review UI (no frontend exists at all yet), the weekly email, a
-tenant-deletion job (remove a whole tenant's storage prefix + cascade rows — different from
-nightly retention), a tenant/brand-wide (not just per-campaign) pass-rate aggregate, and
-§27's eval scenarios (need golden fixture images — VisualQA catching mutated screenshots,
-false-positive rate ≤ 0.15).
+**Also landed**: `GET /api/campaigns/{id}/cost` (§23 — total spend, per-agent breakdown,
+budget remaining) and `ContentHistoryEntry.QualityScore`, set at approval time from the
+attempt's own QA scores.
+
+**Phase 8's backend is now essentially feature-complete except the weekly email.**
+
+## Phase 9 — hardening, cost calibration, evals
+
+Started. §9's own list needs a dashboard, real calibration data, and live eval spend this
+session cannot produce — but the read-only half of "admin views" needed none of that:
+`AdminEndpoints.cs` — `GET /api/admin/dead-jobs`, `GET /api/admin/stuck-runs`, cross-tenant
+(required adding `/api/admin` to `TenantResolutionMiddleware`'s anonymous-path list).
+Manual step advance and campaign re-run are deliberately not built — both are real,
+consequential actions that deserve their own considered endpoint, not a visibility sweep.
+
+**Not yet built anywhere:** the review UI (no frontend exists at all), the weekly email, a
+tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide (not just
+per-campaign) QA pass-rate aggregate, §27's eval scenarios (need golden fixture images), the
+metric dashboard, budget recalibration from real campaigns, and a performed backup/restore
+drill.

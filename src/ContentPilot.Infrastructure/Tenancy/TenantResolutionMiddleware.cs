@@ -25,6 +25,11 @@ public sealed class TenantResolutionMiddleware(RequestDelegate next)
         "/openapi",
         "/scalar",
         "/api/tenants",
+
+        // Cross-tenant by design: an operator's admin view has to see across every tenant
+        // at once, the same reason CampaignTriggerReconcileJobHandler and RetentionJobHandler
+        // open their own cross-tenant scope rather than resolving one from a header.
+        "/api/admin",
     ];
 
     public async Task InvokeAsync(HttpContext context, IMutableTenantContext tenantContext, AppDbContext db)

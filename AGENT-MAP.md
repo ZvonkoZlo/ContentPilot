@@ -51,7 +51,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired in; QA pass-rate metric (`QaPassRateCalculator`) done; still open: §27 evals, carousel continuity |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
 | 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` + `CampaignZipBuilder`, browse/rating/download API, `RetentionJobHandler` all done; review UI (no frontend exists yet) and weekly email not started |
-| 9 — Hardening, cost calibration, evals | 1342 | unclaimed |
+| 9 — Hardening, cost calibration, evals | 1342 | in progress (`claude`) — admin views (dead jobs, stuck runs) done; dashboard, calibration, evals need real data/spend this session can't produce |
 | 10 — Post-MVP options | 1359 | not started |
 
 Sub-sections worth jumping straight to: agent contract 208, validators 229, orchestrator
@@ -256,7 +256,10 @@ does not save.
 
 **API endpoints** — `Api/Endpoints/`: `TenantEndpoints`, `BrandEndpoints`,
 `BrandBrainEndpoints`, `AssetEndpoints`, `DiagnosticsEndpoints`, `CampaignEndpoints` (the
-manual "generate now" trigger — see Orchestration above).
+manual "generate now" trigger — see Orchestration above), `AdminEndpoints` — §9's read-only
+admin views, `GET /api/admin/dead-jobs` and `GET /api/admin/stuck-runs`, cross-tenant by
+design (the one path prefix besides `/api/tenants` that `TenantResolutionMiddleware` lets
+through without an `X-Tenant-Id` header).
 
 ## Tests — five suites, know which one you need
 

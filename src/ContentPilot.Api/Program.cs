@@ -68,6 +68,7 @@ app.MapBrandBrainEndpoints();
 app.MapAssetEndpoints();
 app.MapDiagnosticsEndpoints();
 app.MapCampaignEndpoints();
+app.MapAdminEndpoints();
 
 app.Run();
 

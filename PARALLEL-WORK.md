@@ -1142,3 +1142,30 @@ tighter than the per-tenant one in every configured environment so far is a desi
 a bug, so left alone this pass.
 
 386 unit, 10 architecture, 95 integration (1 new), 1 workflow test green; full build clean.
+
+### Phase 9 begins — admin visibility: dead jobs and stuck runs (`claude`)
+
+Phase 9's own feature list names "Admin views: dead jobs, stuck runs, manual step advance,
+campaign re-run" — most of Phase 9 needs a dashboard, ten real campaigns of calibration
+data, or live eval spend, none of which exist yet, but the read-only half of the admin views
+needed none of that. New `Api/Endpoints/AdminEndpoints.cs`:
+
+- `GET /api/admin/dead-jobs` — every `Job` in `JobState.Dead` (attempts exhausted or a
+  permanent failure), newest first, with its last error and tenant.
+- `GET /api/admin/stuck-runs` — every `WorkflowRun` still `Active` past its own `Deadline`.
+  The reaper should be resolving these on its own schedule; one appearing here for longer
+  than a reaper interval means the reaper needs attention, not the run.
+
+Both are cross-tenant by design (`IMutableTenantContext.BeginCrossTenantScope()`) — an
+operator's job is to see across every tenant at once. That needed
+`TenantResolutionMiddleware`'s anonymous-path list extended with `/api/admin`, the same
+exemption `/api/tenants` already has, since every other endpoint requires a resolved tenant
+and admin routes are deliberately the exception.
+
+**Deliberately left out**: manual step advance and campaign re-run. Both are real actions
+with real judgment calls behind them (is a stuck run's owner actually dead, or just slow? was
+a failure transient or will retrying just fail again identically?) that deserve their own
+considered endpoint and probably their own confirmation step, not a visibility sweep bundled
+with a "make it go" button.
+
+386 unit, 10 architecture, 97 integration (2 new), 1 workflow test green; full build clean.
