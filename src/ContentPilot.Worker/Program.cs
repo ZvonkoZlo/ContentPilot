@@ -1,4 +1,7 @@
+using ContentPilot.Application.Abstractions;
+using ContentPilot.Application.Jobs;
 using ContentPilot.Infrastructure;
+using ContentPilot.Infrastructure.Jobs;
 using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.Infrastructure.Telemetry;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +22,29 @@ if (args.Contains("--migrate"))
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
     return;
+}
+
+// §21's scheduled trigger and daily reconciler are both self-rescheduling jobs (see
+// CampaignTriggerScanJobHandler / CampaignTriggerReconcileJobHandler) — there is no
+// separate scheduler process, only these two perpetually re-enqueueing themselves. That
+// means exactly one of each has to exist at any time; this seeds the first occurrence,
+// idempotently, so a restart never doubles them and a fresh database always gets one.
+await using (var scope = host.Services.CreateAsyncScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var jobQueue = scope.ServiceProvider.GetRequiredService<IJobQueue>();
+
+    if (!await db.Jobs.AnyAsync(j => j.Type == JobTypeName.For<CampaignTriggerScanPayload>() && (j.State == JobState.Pending || j.State == JobState.Leased)))
+    {
+        await jobQueue.EnqueueAsync(new CampaignTriggerScanPayload(), tenantId: null);
+    }
+
+    if (!await db.Jobs.AnyAsync(j => j.Type == JobTypeName.For<CampaignTriggerReconcilePayload>() && (j.State == JobState.Pending || j.State == JobState.Leased)))
+    {
+        await jobQueue.EnqueueAsync(new CampaignTriggerReconcilePayload(), tenantId: null);
+    }
+
+    await db.SaveChangesAsync();
 }
 
 await host.RunAsync();

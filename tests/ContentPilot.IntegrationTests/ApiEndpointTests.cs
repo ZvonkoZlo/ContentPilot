@@ -246,6 +246,34 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
         (await items.Content.ReadFromJsonAsync<List<ItemDto>>()).ShouldBeEmpty();
     }
 
+    [DockerFact]
+    public async Task Cancelling_a_draft_campaign_takes_it_out_of_play()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 15) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var cancel = await _client.PostAsync($"/api/campaigns/{campaign!.Id}/cancel", null);
+
+        cancel.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var cancelled = await cancel.Content.ReadFromJsonAsync<CampaignDto>();
+        cancelled!.Status.ShouldBe("Cancelled");
+    }
+
+    [DockerFact]
+    public async Task Cancelling_an_already_finished_campaign_is_a_harmless_no_op()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 22) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var first = await _client.PostAsync($"/api/campaigns/{campaign!.Id}/cancel", null);
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var second = await _client.PostAsync($"/api/campaigns/{campaign.Id}/cancel", null);
+
+        second.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await second.Content.ReadFromJsonAsync<CampaignDto>())!.Status.ShouldBe("Cancelled");
+    }
+
     private sealed record CampaignDto(Guid Id, Guid BrandId, string Status);
 
     private sealed record ItemDto(Guid Id, string Topic);

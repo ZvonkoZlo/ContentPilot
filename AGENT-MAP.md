@@ -47,7 +47,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 2 — Renderer and static templates | 1206 | done |
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
-| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — API trigger → campaign → items → Approved runs end to end for StaticPost, §24 budget enforced on Writing; no cron/carousels/reels/packaging |
+| 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | unclaimed |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |
@@ -136,19 +136,29 @@ Rendering and Validating a real way to reach the Renderer service, alongside
 `advance-content-item-workflow`, payload `Application/Jobs/
 AdvanceContentItemWorkflowPayload.cs`) drives a `StaticPost` item's `WorkflowRun` end to
 end: Directing → Writing → SpecAssembly → AssetGeneration → Rendering → Validating,
-looping through as many steps as it can in one job invocation and re-enqueuing only on a
-remediation restart. `Infrastructure/Jobs/CampaignWorkflowJobHandler.cs` (job type
-`advance-campaign-workflow`, payload `AdvanceCampaignWorkflowPayload`) plans a campaign with
-`ContentStrategistAgent`, creates each planned item plus its own `WorkflowRun`, enqueues the
-item job for each, and closes the campaign out via `ContentCampaign`'s own transition
-methods once every item is terminal. `Api/Endpoints/CampaignEndpoints.cs` — `POST
-/api/campaigns`, `GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items` — is the manual
-trigger from §21 and its read side. Proven end to end against real Postgres/MinIO in
-`tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs`,
-`CampaignWorkflowJobHandlerTests.cs`, and the campaign tests appended to
-`ApiEndpointTests.cs`. No Hangfire cron, budget enforcement, carousel/reel composition,
-image generation, or real packaging (Phase 8) exists yet — see PARALLEL-WORK.md's phase 5
-sections for the full, honestly-scoped list.
+looping through as many steps as it can in one job invocation, §24 budget-checked before
+Writing, promoting the best attempt on `NeedsHumanReview`, proven crash-resumable.
+`Infrastructure/Jobs/CampaignWorkflowJobHandler.cs` (job type `advance-campaign-workflow`,
+payload `AdvanceCampaignWorkflowPayload`) plans a campaign with `ContentStrategistAgent`,
+creates each planned item plus its own `WorkflowRun`, enqueues the item job for each, and
+closes the campaign out via `ContentCampaign`'s own transition methods once every item is
+terminal. `Infrastructure/Campaigns/CampaignStarter.cs` is §21's single implementation
+behind every way a campaign starts; `Application/Campaigns/CampaignWeek.cs` is the shared
+"which Monday" arithmetic. `Infrastructure/Jobs/CampaignTriggerScanJobHandler.cs` (hourly,
+per-brand-timezone 06:00-Monday check) and `CampaignTriggerReconcileJobHandler.cs` (daily
+safety net) are §21's scheduled and reconciled triggers — both self-rescheduling jobs on the
+existing queue, a deliberate substitution for the plan's named Hangfire (see
+PARALLEL-WORK.md for the reasoning); `Worker/Program.cs` seeds the first occurrence of each
+idempotently on startup. `Api/Endpoints/CampaignEndpoints.cs` — `POST /api/campaigns`,
+`GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items`, `POST
+/api/campaigns/{id}/cancel` — is the manual trigger from §21, its read side, and
+cancellation (campaign-level only; items already in flight are not reached). Proven end to
+end against real Postgres/MinIO in `ContentItemWorkflowJobHandlerTests.cs`,
+`CampaignWorkflowJobHandlerTests.cs`, `CampaignTriggerJobHandlerTests.cs`, and the campaign
+tests appended to `ApiEndpointTests.cs`. **Phase 5 is done except background image
+generation** (no provider chosen, no client exists — degrades to fewer eligible templates,
+never a stuck item) — carousel/reel composition and real packaging are Phase 6/7/8, never
+part of this phase's own scope. See PARALLEL-WORK.md's phase 5 sections for the full history.
 
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation

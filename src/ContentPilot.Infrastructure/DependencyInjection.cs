@@ -5,6 +5,7 @@ using ContentPilot.Application.Capabilities;
 using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Assets;
 using ContentPilot.Infrastructure.Branding;
+using ContentPilot.Infrastructure.Campaigns;
 using ContentPilot.Application.Jobs;
 using ContentPilot.Infrastructure.Jobs;
 using ContentPilot.Infrastructure.Persistence;
@@ -83,6 +84,7 @@ public static class DependencyInjection
         services.TryAddScoped<AssetLibrary>();
         services.TryAddScoped<GoldenTenantSeeder>();
         services.TryAddScoped<IAssetContentResolver, AssetContentResolver>();
+        services.TryAddScoped<CampaignStarter>();
 
         services.AddContentPilotAi(configuration);
         services.AddContentPilotRendererClient(configuration);
@@ -125,6 +127,8 @@ public static class DependencyInjection
         services.AddScoped<IJobHandler, PingJobHandler>();
         services.AddScoped<IJobHandler, ContentItemWorkflowJobHandler>();
         services.AddScoped<IJobHandler, CampaignWorkflowJobHandler>();
+        services.AddScoped<IJobHandler, CampaignTriggerScanJobHandler>();
+        services.AddScoped<IJobHandler, CampaignTriggerReconcileJobHandler>();
 
         services.AddHostedService<JobDispatcher>();
         services.AddHostedService<JobReaper>();

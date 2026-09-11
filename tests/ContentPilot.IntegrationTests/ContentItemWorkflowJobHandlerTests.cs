@@ -99,6 +99,44 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
     }
 
     [DockerFact]
+    public async Task A_crash_after_writing_succeeds_resumes_without_re_billing_the_model()
+    {
+        var fixtureData = await SetupAsync(new FakeRendererClient(Manifest, alwaysOverflow: false));
+        await using var _scope = fixtureData.Scope;
+
+        var db = fixtureData.Scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var run = await db.WorkflowRuns.SingleAsync(r => r.EntityId == fixtureData.Item.Id);
+        var item = await db.ContentItems.SingleAsync(i => i.Id == fixtureData.Item.Id);
+
+        // Exactly the state a real crash mid-render would leave behind: Directing and
+        // Writing each committed their own WorkflowStep row independently and the item
+        // moved to SpecAssembly, but nothing after that ever ran.
+        var directingStep = new WorkflowStep(item.TenantId, run.Id, nameof(ContentItemStatus.Directing), 1, Now);
+        directingStep.Succeed(Now, resultJson:
+            """{"templateId":"fake-template","templateVersion":1,"aspectRatio":"FourFive","assetAssignments":{}}""");
+        db.WorkflowSteps.Add(directingStep);
+
+        var writingStep = new WorkflowStep(item.TenantId, run.Id, nameof(ContentItemStatus.Writing), 1, Now);
+        writingStep.Succeed(Now, resultJson: CopyResponse());
+        db.WorkflowSteps.Add(writingStep);
+
+        item.MoveTo(ContentItemStatus.Writing);
+        item.MoveTo(ContentItemStatus.SpecAssembly);
+        await db.SaveChangesAsync();
+
+        await AdvanceAsync(fixtureData);
+
+        var reloaded = await db.ContentItems.AsNoTracking().SingleAsync(i => i.Id == item.Id);
+        reloaded.Status.ShouldBe(ContentItemStatus.Approved);
+
+        // The model this fixture wires up would happily answer again — the point is that
+        // resuming never asks it to. Zero runs and zero spend is the only way to be sure
+        // Directing and Writing were skipped rather than quietly redone.
+        (await db.AgentRuns.CountAsync(r => r.ContentItemId == item.Id)).ShouldBe(0);
+        (await db.CostEntries.CountAsync(e => e.ContentItemId == item.Id)).ShouldBe(0);
+    }
+
+    [DockerFact]
     public async Task A_render_that_always_overflows_converges_to_human_review_rather_than_looping_forever()
     {
         var fixtureData = await SetupAsync(new FakeRendererClient(Manifest, alwaysOverflow: true));
@@ -129,6 +167,11 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         // so far is promotable precisely because the earlier ones survive.
         (await db.CreativeSpecs.CountAsync(s => s.ContentItemId == fixtureData.Item.Id)).ShouldBeGreaterThan(1);
         (await db.ContentRevisions.CountAsync(r => r.ContentItemId == fixtureData.Item.Id)).ShouldBeGreaterThan(0);
+
+        // Work is never thrown away: even though every attempt failed the same way, one of
+        // them is promoted rather than the item ending with nothing to show a reviewer.
+        reloaded.BestAssetId.ShouldNotBeNull();
+        (await db.ContentAssets.AnyAsync(a => a.Id == reloaded.BestAssetId)).ShouldBeTrue();
     }
 
     private static async Task AdvanceAsync(TestFixtureData data)

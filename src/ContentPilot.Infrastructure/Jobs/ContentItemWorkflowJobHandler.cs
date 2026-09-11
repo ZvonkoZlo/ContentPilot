@@ -180,6 +180,7 @@ public sealed class ContentItemWorkflowJobHandler(
                 return true;
 
             case NextActionKind.NeedsHumanReview:
+                await PromoteBestAttemptAsync(item, ct);
                 item.SendToHumanReview(decision.Reason ?? "Attempts exhausted.");
                 run.SendToHumanReview(decision.Reason ?? "Attempts exhausted.", now);
                 return true;
@@ -635,6 +636,39 @@ public sealed class ContentItemWorkflowJobHandler(
         var step = new WorkflowStep(item.TenantId, run.Id, stepName, attempt, now);
         step.Succeed(now, resultJson: resultJson);
         db.WorkflowSteps.Add(step);
+    }
+
+    /// <summary>
+    /// "The best attempt so far is promoted rather than discarded" is a design promise, not
+    /// a nicety — a week where three of five posts are perfect and two need a tweak is a
+    /// good week only if the two that needed a tweak still show something. Ranked by
+    /// <c>QualityReview.Score</c>, the same worst-to-clean scale <c>QaReport</c> already
+    /// computes; ties favour the latest attempt, since a later attempt reflects whatever the
+    /// remediation ladder learned from the earlier ones.
+    /// </summary>
+    private async Task PromoteBestAttemptAsync(ContentItem item, CancellationToken ct)
+    {
+        var bestAttempt = await db.QualityReviews
+            .Where(q => q.ContentItemId == item.Id)
+            .OrderByDescending(q => q.Score)
+            .ThenByDescending(q => q.Attempt)
+            .Select(q => (int?)q.Attempt)
+            .FirstOrDefaultAsync(ct);
+
+        if (bestAttempt is not { } attempt)
+        {
+            // The item never reached Validating even once — Directing found no eligible
+            // template, say — so there is nothing rendered to promote.
+            return;
+        }
+
+        var asset = await db.ContentAssets.FirstOrDefaultAsync(
+            a => a.ContentItemId == item.Id && a.Attempt == attempt && a.Kind == ContentAssetKind.Image, ct);
+
+        if (asset is not null)
+        {
+            item.PromoteBestAttempt(asset.Id);
+        }
     }
 
     /// <summary>

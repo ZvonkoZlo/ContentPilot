@@ -153,6 +153,29 @@ public sealed class CampaignWorkflowJobHandlerTests(ContentPilotFixture fixture)
     }
 
     [DockerFact]
+    public async Task A_cancelled_campaign_is_left_alone_by_the_handler()
+    {
+        var (campaign, scope) = await SetupAsync();
+        await using var _scope = scope;
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var handler = BuildHandler(scope.ServiceProvider, PlanJson());
+
+        await AdvanceAsync(handler, campaign.Id); // plans and fans out
+
+        var tracked = await db.ContentCampaigns.SingleAsync(c => c.Id == campaign.Id);
+        tracked.Cancel(Now);
+        await db.SaveChangesAsync();
+
+        // A cancelled campaign is terminal, so the handler's very first check stops it —
+        // no re-plan, no re-check, nothing overwrites the cancellation.
+        await AdvanceAsync(handler, campaign.Id);
+
+        var reloaded = await db.ContentCampaigns.AsNoTracking().SingleAsync(c => c.Id == campaign.Id);
+        reloaded.Status.ShouldBe(CampaignStatus.Cancelled);
+    }
+
+    [DockerFact]
     public async Task A_strategist_that_cannot_produce_a_valid_plan_fails_the_campaign_with_a_reason()
     {
         // Wrong quota (one post instead of two) — the deterministic validator rejects it,
