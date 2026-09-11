@@ -1,9 +1,9 @@
 ---
 agent: claude
-phase: 6
+phase: 8
 branch: main
 status: active
-migrations: false
+migrations: true
 updated: 2026-09-11
 ---
 
@@ -13,6 +13,7 @@ src/ContentPilot.Domain/Content/
 src/ContentPilot.Domain/Observability/
 src/ContentPilot.Domain/Quality/
 src/ContentPilot.Domain/Workflow/
+src/ContentPilot.Domain/Packaging/
 src/ContentPilot.Application/Ai/
 src/ContentPilot.Application/Agents/
 src/ContentPilot.Application/Prompts/
@@ -21,11 +22,14 @@ src/ContentPilot.Application/Quality/
 src/ContentPilot.Application/Orchestration/
 src/ContentPilot.Application/Jobs/
 src/ContentPilot.Application/Campaigns/
+src/ContentPilot.Application/Packaging/
 src/ContentPilot.Infrastructure/Ai/
 src/ContentPilot.Infrastructure/Branding/
 src/ContentPilot.Infrastructure/Campaigns/
 src/ContentPilot.Infrastructure/Jobs/
 src/ContentPilot.Infrastructure/Rendering/
+src/ContentPilot.Infrastructure/Packaging/
+src/ContentPilot.Infrastructure/Persistence/Migrations/
 src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
 src/ContentPilot.Worker/Program.cs
 tests/ContentPilot.UnitTests/Agents/
@@ -35,10 +39,12 @@ tests/ContentPilot.UnitTests/Orchestration/
 tests/ContentPilot.UnitTests/Domain/
 tests/ContentPilot.UnitTests/Rendering/
 tests/ContentPilot.UnitTests/Campaigns/
+tests/ContentPilot.UnitTests/Packaging/
 tests/ContentPilot.IntegrationTests/AssetContentResolverTests.cs
 tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/CampaignWorkflowJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/CampaignTriggerJobHandlerTests.cs
+tests/ContentPilot.IntegrationTests/CampaignPackagerTests.cs
 tests/ContentPilot.WorkflowTests/
 
 ## notes
@@ -84,5 +90,22 @@ Landed this pass, on top of the vision-support foundation (`LlmRequest.Images`,
 - Carousel continuity checks (`CarouselDiscontinuity` code) are moot until Phase 5's item
   handler drives carousels — it currently only drives `StaticPost`.
 
-`migrations: false` — this phase adds no tables (`QualityReview` and `QaFinding` already
+`migrations: false` — phase 6 added no tables (`QualityReview` and `QaFinding` already
 carry everything a model-gate finding needs).
+
+## Phase 8 — packaging, delivery, human review
+
+**Core landed.** `CampaignPackager` builds `plan.json`/`manifest.json` and every item's
+`post-NN/image.png|caption.txt|metadata.json` under `campaigns/{campaignId}/...`, wired into
+`CampaignWorkflowJobHandler.CheckCompletionAsync` in place of the old placeholder. Migration
+`CampaignPackaging` (`campaign_packages`, `human_ratings`) applied. Browse/rating API added
+to `CampaignEndpoints.cs`: `GET /{id}/package`, `POST /{id}/items/{itemId}/rating`. Along the
+way, found and fixed a real gap: rendered image bytes were never actually uploaded to object
+storage before this (`ContentAsset.StorageKey` held a `pending/...` placeholder) — now
+uploaded to `runs/{itemId}/attempts/{attempt}/{sha256}.ext` in
+`ContentItemWorkflowJobHandler`. See PARALLEL-WORK.md's Phase 8 section for the full history,
+including the Docker Desktop API-version workaround for running the Docker suites here
+(`DOCKER_API_VERSION=1.43 dotnet test ...`).
+
+**Not yet built:** the ZIP itself (`CampaignPackage.ZipKey` stays null), the review UI (no
+frontend exists at all yet), the weekly email, retention/tenant-deletion jobs.

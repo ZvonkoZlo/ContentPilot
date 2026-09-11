@@ -50,7 +50,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired into the live loop; still open: QA pass-rate metric, §27 evals, carousel continuity |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
-| 8 — Packaging, delivery, human review | 1322 | unclaimed |
+| 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` (plan.json/manifest.json, per-item folders), browse/rating API done; ZIP streaming, review UI, weekly email not started |
 | 9 — Hardening, cost calibration, evals | 1342 | unclaimed |
 | 10 — Post-MVP options | 1359 | not started |
 
@@ -170,14 +170,37 @@ existing queue, a deliberate substitution for the plan's named Hangfire (see
 PARALLEL-WORK.md for the reasoning); `Worker/Program.cs` seeds the first occurrence of each
 idempotently on startup. `Api/Endpoints/CampaignEndpoints.cs` — `POST /api/campaigns`,
 `GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items`, `POST
-/api/campaigns/{id}/cancel` — is the manual trigger from §21, its read side, and
-cancellation (campaign-level only; items already in flight are not reached). Proven end to
+/api/campaigns/{id}/cancel`, `GET /api/campaigns/{id}/package`, `POST
+/api/campaigns/{id}/items/{itemId}/rating` — is the manual trigger from §21, its read side,
+cancellation (campaign-level only; items already in flight are not reached), the package
+index, and the 1–5 human rating. Proven end to
 end against real Postgres/MinIO in `ContentItemWorkflowJobHandlerTests.cs`,
-`CampaignWorkflowJobHandlerTests.cs`, `CampaignTriggerJobHandlerTests.cs`, and the campaign
-tests appended to `ApiEndpointTests.cs`. **Phase 5 is done except background image
+`CampaignWorkflowJobHandlerTests.cs`, `CampaignTriggerJobHandlerTests.cs`,
+`CampaignPackagerTests.cs`, and the campaign/package/rating tests appended to
+`ApiEndpointTests.cs`. **Phase 5 is done except background image
 generation** (no provider chosen, no client exists — degrades to fewer eligible templates,
-never a stuck item) — carousel/reel composition and real packaging are Phase 6/7/8, never
-part of this phase's own scope. See PARALLEL-WORK.md's phase 5 sections for the full history.
+never a stuck item) — carousel/reel composition are Phase 7/6, never part of this phase's own
+scope. See PARALLEL-WORK.md's phase 5 sections for the full history.
+
+**Packaging (Phase 8)** — `Domain/Packaging/` (`CampaignPackage` — one row per campaign,
+`ManifestJson`/`ZipKey?`/`BuiltAt`/`EmailSentAt`, rebuilt in place rather than
+append-only; `HumanRating` — one row per item, a second rating replaces the first).
+`Application/Packaging/PackageManifest.cs` (`CampaignPlan`/`CampaignPlanItem`,
+`PackageManifest`/`PackageManifestFile` — the `plan.json`/`manifest.json` shapes).
+`Infrastructure/Packaging/CampaignPackager.cs` — lays a campaign out under
+`campaigns/{campaignId}/...` (§12/§13's layout: `post-01/image.png` + `caption.txt` +
+`metadata.json` per item, `reel-` prefix for `ContentItemType.Reel`), called from
+`CampaignWorkflowJobHandler.CheckCompletionAsync` in place of the old placeholder
+transition. Only `ContentAssetKind.Image` items package their files today (only
+`StaticPost` is actually driven); an item with nothing rendered is still listed in
+`plan.json`, with `folder: null`. EF configuration in
+`Infrastructure/Persistence/Configurations/PackagingConfigurations.cs`, migration
+`CampaignPackaging`. **Not yet built**: the ZIP itself (`CampaignPackage.ZipKey` stays
+null), the review UI, and the weekly email.
+<br>**Also landed alongside this**: rendered image bytes are now actually uploaded to
+object storage (`runs/{itemId}/attempts/{attempt}/{sha256}.ext`, content-addressed) —
+previously `ContentAsset.StorageKey` held a `pending/...` placeholder that nothing ever
+wrote real bytes to, which the packager needs to read from.
 
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation
@@ -245,6 +268,13 @@ export COMPOSE_PROJECT_NAME=contentpilot-<you>
 
 Ports live in a git-ignored `.env` (`POSTGRES_PORT` defaults to 5433 — the host already has
 5432). Never run `docker compose down -v`.
+
+**Docker Desktop client/engine API mismatch (Windows dev boxes)**: if the Docker suites fail
+immediately with `client version 1.44 is too new. Maximum supported API version is 1.43`,
+Docker Desktop is running fine — Testcontainers' client just negotiates a newer API than
+this engine serves. Fix without touching Docker Desktop: prefix the test run with
+`DOCKER_API_VERSION=1.43`, e.g. `DOCKER_API_VERSION=1.43 dotnet test
+tests/ContentPilot.IntegrationTests`.
 
 ## Token discipline
 

@@ -52,6 +52,7 @@ public sealed class ContentItemWorkflowJobHandler(
     IBrandBrainReader brandReader,
     IRendererClient renderer,
     IAssetContentResolver assetResolver,
+    IObjectStore objectStore,
     AgentExecutor agentExecutor,
     CopywriterAgent copywriter,
     VisualQaAgent visualQa,
@@ -485,11 +486,22 @@ public sealed class ContentItemWorkflowJobHandler(
         }
 
         var bytes = response.Image.ToBytes();
+        var sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+
+        // The attempt's own storage location, not the campaign's final layout — Packaging
+        // (Phase 8) copies from here into campaigns/{campaignId}/... once an item is
+        // approved. Content-addressed by sha256 like every other asset in the object store,
+        // so re-rendering the same attempt twice (a resumed job after a crash) costs nothing.
+        var key = ObjectKey.ForTenant(item.TenantId, $"runs/{item.Id:N}/attempts/{attempt}/{sha256}{ExtensionFor(response.Image.MediaType)}");
+
+        using (var stream = new MemoryStream(bytes))
+        {
+            await objectStore.PutAsync(key, stream, response.Image.MediaType, ct);
+        }
 
         db.ContentAssets.Add(new ContentAsset(
             item.TenantId, item.Id, attempt, ContentAssetKind.Image,
-            $"pending/{item.Id:N}/{attempt}", response.Image.MediaType,
-            Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)),
+            key, response.Image.MediaType, sha256,
             bytes.Length, now, response.Report.Width, response.Report.Height));
 
         var fidelity = new List<CompareResult>();
@@ -637,6 +649,14 @@ public sealed class ContentItemWorkflowJobHandler(
 
         return step?.ResultJson is null ? null : JsonSerializer.Deserialize<CopySet>(step.ResultJson, Json);
     }
+
+    private static string ExtensionFor(string mediaType) => mediaType switch
+    {
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/webp" => ".webp",
+        _ => "",
+    };
 
     /// <summary>
     /// Validating never gets its own pass through the loop: a gate's report only exists in

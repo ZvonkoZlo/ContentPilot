@@ -850,3 +850,68 @@ the integration-level assertions described above.
 **Still open for phase 6**: the QA pass-rate metric (§9: >60% first-attempt pass), §27's eval
 scenarios (need golden fixture images that don't exist yet), carousel continuity checks (moot
 until Phase 5 drives carousels — it currently only drives `StaticPost`).
+
+### Phase 8 begins — CampaignPackager: plan.json, manifest.json, per-item layout (`claude`)
+
+Phase 6's core is done (see above). Starting Phase 8 — packaging, delivery, human review —
+since Phase 7 (reels) is `codex`'s and unclaimed phases 9/10 depend on more of a real product
+existing first. This pass covers the packaging step itself and the browse/rating API; the
+ZIP, the review UI and the weekly email are separate, later verticals (see below).
+
+**Migration `CampaignPackaging`** (approved by the user before running — `dotnet ef
+migrations add` is a real DB operation, not something to run silently): two new tables,
+`campaign_packages` (`CampaignPackage` — one row per campaign, `ManifestJson`, `ZipKey?`,
+`BuiltAt`, `EmailSentAt?`, rebuilt in place rather than append-only, since re-approving an
+item after the fact should update the same package, not accumulate historical ones) and
+`human_ratings` (`HumanRating` — one row per item, unique on `ContentItemId`; a second
+rating replaces the first).
+
+**A real gap found and fixed before packaging could even start**: `ContentAsset.StorageKey`
+held a literal `"pending/{itemId}/{attempt}"` placeholder — nothing had ever actually
+uploaded the rendered bytes to object storage; `response.Image` only ever lived in memory
+for the duration of one job invocation. `ContentItemWorkflowJobHandler` now takes `IObjectStore`
+and uploads every rendered attempt to `runs/{itemId}/attempts/{attempt}/{sha256}.ext`
+(content-addressed, so a re-render of an already-uploaded attempt after a crash costs
+nothing) before recording the `ContentAsset` row with the real key. Without this, Phase 8
+had nothing to copy into a campaign's package.
+
+**`CampaignPackager`** (`Infrastructure/Packaging/CampaignPackager.cs`) builds
+`campaigns/{campaignId}/plan.json`, `manifest.json`, and one folder per item
+(`post-01/image.png` + `caption.txt` + `metadata.json`, `reel-` prefix for
+`ContentItemType.Reel`) per §12/§13's own layout. Resolves the winning attempt as
+`item.BestAssetId` when set (the human-review promotion path), else the highest-numbered
+`Image` attempt (true for a normally approved item, whose last attempt is definitionally
+the good one). Caption text comes from the Writing step's `CopySet`, read off
+`WorkflowStep.ResultJson` the same way the item handler's own `LoadCopySetAsync` does. An
+item that never rendered anything (no eligible template, sent straight to human review) is
+still listed in `plan.json` with `folder: null` — packaging never silently drops an item.
+Idempotent: calling it twice upserts the one `CampaignPackage` row rather than duplicating
+it, and re-running after an item is approved late naturally picks up the new asset.
+
+**Gotcha**: streaming a downloaded object straight back into another `PutAsync` call threw
+`Could not determine content length` — the S3 SDK needs to know the stream length up front
+to sign the PUT, and the store's read-side stream doesn't always expose one. Fixed by
+buffering into a `MemoryStream` before the re-upload (`ReadAllBytesAsync`), same as every
+other upload in this codebase already does.
+
+Wired into `CampaignWorkflowJobHandler.CheckCompletionAsync`: `BeginPackaging()` still
+transitions the campaign's own state machine as before, but now genuinely calls
+`packager.BuildAsync(campaign, ct)` in between, rather than the old placeholder comment.
+
+**Browse/rating API**, appended to `CampaignEndpoints.cs`: `GET /api/campaigns/{id}/package`
+(the manifest, 404 until packaged — the download itself goes through object storage
+directly, this is the index) and `POST /api/campaigns/{id}/items/{itemId}/rating` (the 1–5
+"would I publish this", upsert semantics, 404 if the item isn't in that campaign).
+
+**Docker Desktop note for whoever runs these suites next**: this dev machine's Docker
+Desktop serves engine API 1.43 while Testcontainers' client negotiates 1.44 by default —
+`DOCKER_API_VERSION=1.43 dotnet test ...` fixes it without touching Docker Desktop itself.
+Confirmed working this pass: 380 unit, 10 architecture, 82 integration (6 new — 3
+`CampaignPackagerTests`, 3 appended to `ApiEndpointTests`), 1 workflow smoke test, all
+green; full build clean, 0 warnings.
+
+**Still open for Phase 8**: the ZIP itself (`CampaignPackage.ZipKey` stays null — streaming
+without buffering a large campaign is real work of its own), the review UI (approve/reject,
+view findings, view the run tree — no frontend exists yet at all, see the earlier note in
+this file about that), the weekly email (thumbnail grid, signed link, once-only send via
+`EmailSentAt`), and retention/tenant-deletion jobs.

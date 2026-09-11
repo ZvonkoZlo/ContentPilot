@@ -68,6 +68,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
 
     public DbSet<BudgetReservation> BudgetReservations => Set<BudgetReservation>();
 
+    public DbSet<Domain.Packaging.CampaignPackage> CampaignPackages => Set<Domain.Packaging.CampaignPackage>();
+
+    public DbSet<Domain.Packaging.HumanRating> HumanRatings => Set<Domain.Packaging.HumanRating>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

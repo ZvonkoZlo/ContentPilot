@@ -250,6 +250,7 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
             brandReader,
             renderer,
             scope.ServiceProvider.GetRequiredService<IAssetContentResolver>(),
+            store,
             agentExecutor,
             new CopywriterAgent(),
             new VisualQaAgent(),

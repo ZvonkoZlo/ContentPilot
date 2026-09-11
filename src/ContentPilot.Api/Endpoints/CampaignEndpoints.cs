@@ -1,6 +1,7 @@
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Application.Campaigns;
 using ContentPilot.Domain.Content;
+using ContentPilot.Domain.Packaging;
 using ContentPilot.Infrastructure.Campaigns;
 using ContentPilot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -101,6 +102,48 @@ public static class CampaignEndpoints
             "acting on it the next time it is dispatched; items already in flight keep " +
             "running to their own terminal state — cancellation does not reach into them yet.");
 
+        group.MapGet("/{id:guid}/package", async (Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var package = await db.CampaignPackages.AsNoTracking().FirstOrDefaultAsync(p => p.CampaignId == id, ct);
+
+            return package is null
+                ? Results.NotFound(new { detail = "This campaign has not been packaged yet." })
+                : Results.Ok(new CampaignPackageResponse(package.CampaignId, package.BuiltAt, package.EmailSentAt, package.ManifestJson));
+        })
+        .WithSummary(
+            "Reads a campaign's built package: the manifest.json content plus when it was " +
+            "built. 404 until the campaign reaches Packaging. The files themselves are read " +
+            "through object storage directly — this endpoint is the index, not the download.");
+
+        group.MapPost("/{id:guid}/items/{itemId:guid}/rating", async (
+            Guid id, Guid itemId, RateItemRequest request, AppDbContext db, IUnitOfWork uow, IClock clock, CancellationToken ct) =>
+        {
+            var item = await db.ContentItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId && i.CampaignId == id, ct);
+
+            if (item is null)
+            {
+                return Results.NotFound(new { detail = $"No item '{itemId}' in campaign '{id}'." });
+            }
+
+            var now = clock.UtcNow;
+            var rating = await db.HumanRatings.FirstOrDefaultAsync(r => r.ContentItemId == itemId, ct);
+
+            if (rating is null)
+            {
+                rating = new HumanRating(item.TenantId, itemId, request.Score, now, request.Note);
+                db.HumanRatings.Add(rating);
+            }
+            else
+            {
+                rating.Update(request.Score, now, request.Note);
+            }
+
+            await uow.SaveChangesAsync(ct);
+
+            return Results.Ok(new RatingResponse(rating.ContentItemId, rating.Score, rating.Note, rating.RatedAt));
+        })
+        .WithSummary("Records the review UI's 1–5 \"would I publish this\" rating for one item. A second call replaces the first.");
+
         return app;
     }
 
@@ -131,3 +174,9 @@ public sealed record ContentItemResponse(
     string Status,
     int QualityAttempts,
     string? FailureReason);
+
+public sealed record CampaignPackageResponse(Guid CampaignId, DateTimeOffset BuiltAt, DateTimeOffset? EmailSentAt, string ManifestJson);
+
+public sealed record RateItemRequest(int Score, string? Note);
+
+public sealed record RatingResponse(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);

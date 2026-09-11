@@ -1,8 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using ContentPilot.Application.Abstractions;
+using ContentPilot.Domain.Content;
+using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.IntegrationTests.Infrastructure;
 using ContentPilot.TestSupport;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -274,9 +279,78 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
         (await second.Content.ReadFromJsonAsync<CampaignDto>())!.Status.ShouldBe("Cancelled");
     }
 
+    [DockerFact]
+    public async Task A_campaign_that_has_not_been_packaged_yet_has_no_package()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 29) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var package = await _client.GetAsync($"/api/campaigns/{campaign!.Id}/package");
+
+        package.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [DockerFact]
+    public async Task Rating_an_item_round_trips_and_a_second_rating_replaces_the_first()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 5) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaign!.Id, ContentItemType.StaticPost, "Rate me", "problem-solution", "n/a", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var first = await _client.PostAsJsonAsync(
+            $"/api/campaigns/{campaign.Id}/items/{item.Id}/rating", new { score = 4, note = "Good enough to ship" });
+
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var firstRating = await first.Content.ReadFromJsonAsync<RatingDto>();
+        firstRating!.Score.ShouldBe(4);
+
+        var second = await _client.PostAsJsonAsync(
+            $"/api/campaigns/{campaign.Id}/items/{item.Id}/rating", new { score = 5, note = (string?)null });
+
+        second.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var secondRating = await second.Content.ReadFromJsonAsync<RatingDto>();
+        secondRating!.ContentItemId.ShouldBe(firstRating.ContentItemId);
+        secondRating.Score.ShouldBe(5);
+
+        (await db.HumanRatings.CountAsync(r => r.ContentItemId == item.Id)).ShouldBe(1);
+    }
+
+    [DockerFact]
+    public async Task Rating_an_item_from_the_wrong_campaign_is_not_found()
+    {
+        var first = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 12) });
+        var second = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 19) });
+        var campaignA = await first.Content.ReadFromJsonAsync<CampaignDto>();
+        var campaignB = await second.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaignA!.Id, ContentItemType.StaticPost, "Belongs to A", "problem-solution", "n/a", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/campaigns/{campaignB!.Id}/items/{item.Id}/rating", new { score = 3, note = (string?)null });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     private sealed record CampaignDto(Guid Id, Guid BrandId, string Status);
 
     private sealed record ItemDto(Guid Id, string Topic);
+
+    private sealed record RatingDto(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
 
     private sealed record TenantDto(Guid Id);
 

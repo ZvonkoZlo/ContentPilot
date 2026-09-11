@@ -251,6 +251,7 @@ public sealed class CampaignWorkflowJobHandlerTests(ContentPilotFixture fixture)
             services.GetRequiredService<ContentMemoryReader>(),
             agentExecutor,
             new ContentStrategistAgent(),
+            new ContentPilot.Infrastructure.Packaging.CampaignPackager(db, store, clock),
             NullLogger<CampaignWorkflowJobHandler>.Instance);
     }
 

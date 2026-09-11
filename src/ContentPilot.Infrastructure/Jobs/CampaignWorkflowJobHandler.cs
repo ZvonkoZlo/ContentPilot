@@ -24,11 +24,12 @@ namespace ContentPilot.Infrastructure.Jobs;
 /// <para>
 /// <b>Scope of this pass.</b> No <c>WorkflowRun</c> is created at campaign scope — the
 /// entity's own transition guard is enough for what this handler does, and nothing yet
-/// needs a campaign-level attempt counter or deadline. "Packaging" is a single instantaneous
-/// transition here, not the real ZIP-and-manifest step Phase 8 will add; ability to
-/// re-plan a single repetitive item (§8's <c>Replan</c> outcome) does not exist, so those
-/// items simply sit in <c>NeedsHumanReview</c> — see <c>ContentItemWorkflowJobHandler</c>'s
-/// own notes.
+/// needs a campaign-level attempt counter or deadline. Packaging (§12/§13, Phase 8) now
+/// really builds <c>plan.json</c>/<c>manifest.json</c> and lays every item's asset out under
+/// <c>campaigns/{campaignId}/...</c> via <see cref="Packaging.CampaignPackager"/>; the ZIP
+/// itself and the weekly email are still not built. The ability to re-plan a single
+/// repetitive item (§8's <c>Replan</c> outcome) does not exist, so those items simply sit in
+/// <c>NeedsHumanReview</c> — see <c>ContentItemWorkflowJobHandler</c>'s own notes.
 /// </para>
 /// </summary>
 public sealed class CampaignWorkflowJobHandler(
@@ -39,6 +40,7 @@ public sealed class CampaignWorkflowJobHandler(
     ContentMemoryReader recentContentReader,
     AgentExecutor agentExecutor,
     ContentStrategistAgent strategist,
+    Packaging.CampaignPackager packager,
     ILogger<CampaignWorkflowJobHandler> logger)
     : JobHandler<AdvanceCampaignWorkflowPayload>
 {
@@ -174,10 +176,8 @@ public sealed class CampaignWorkflowJobHandler(
 
         var allApproved = items.All(status => status == ContentItemStatus.Approved);
 
-        // A real packaging step (plan.json, manifest.json, the ZIP) is Phase 8's job; this
-        // pass only needs the transition ContentCampaign's own state machine requires to
-        // reach a terminal state honestly, rather than skipping a legal step.
         campaign.BeginPackaging();
+        await packager.BuildAsync(campaign, ct);
         campaign.Complete(allApproved, clock.UtcNow);
     }
 }
