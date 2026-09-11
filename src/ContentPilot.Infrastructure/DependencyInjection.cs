@@ -123,6 +123,7 @@ public static class DependencyInjection
     public static IServiceCollection AddContentPilotJobProcessing(this IServiceCollection services)
     {
         services.AddScoped<IJobHandler, PingJobHandler>();
+        services.AddScoped<IJobHandler, ContentItemWorkflowJobHandler>();
 
         services.AddHostedService<JobDispatcher>();
         services.AddHostedService<JobReaper>();

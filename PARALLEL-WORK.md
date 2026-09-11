@@ -511,3 +511,74 @@ calling the executor above that matches it, persist `CreativeSpec`/`ContentAsset
 354 unit tests unchanged, 4 new integration tests (55 total) exercising the resolver against
 real Postgres and MinIO via Testcontainers; 10 architecture and the workflow smoke test
 green; full build clean.
+
+### Phase 5: the core loop actually runs, end to end (`claude`)
+
+`ContentItemWorkflowJobHandler` (`Infrastructure/Jobs/`) is the caller §6 describes: it
+leases nothing itself (the job queue already leased the job), loads a `WorkflowRun`, calls
+`OrchestratorCore.Decide`, executes exactly the action it names, and persists the result.
+It is wired to `IJobQueue` as job type `advance-content-item-workflow`
+(`AdvanceContentItemWorkflowPayload`), registered in `AddContentPilotJobProcessing`.
+
+**This is real, not a sketch.** Two integration tests against real Postgres and MinIO prove
+it: a clean render carries a `StaticPost` item from `Pending` all the way to `Approved`,
+writing a real `CreativeSpec`, `ContentAsset` and empty-findings `QualityReview` along the
+way; and a render that always overflows converges to `NeedsHumanReview` in a bounded number
+of job invocations — the escalation ladder actually escalating, not just unit-tested in
+isolation. Only two things are faked in those tests: the model (a scripted response, same
+trick `AgentExecutorTests` already used) and the renderer (no Chromium needed to prove
+orchestration — the renderer's own fidelity math is the renderer suite's job, not this
+one's).
+
+**The one simplification worth knowing, stated rather than hidden.** Every step is pure,
+cheap, or (Writing) memoised, so one job invocation drives an item through as many steps as
+it can in a loop — Directing, Writing, SpecAssembly, AssetGeneration, Rendering, and then
+straight into Validating's decision without a second job round-trip, because the render
+report only exists in memory for that one moment and re-fetching it would mean persisting
+the whole report and every immutable slot's mask, which nothing else needs. Re-enqueuing
+happens only on a remediation restart (a fresh lease window after spending a quality
+attempt) or the 25-iteration safety cap. A crash mid-pass simply redoes the cheap steps;
+Writing's `CopySet` is memoised in its own `WorkflowStep.ResultJson` (a new column, migration
+`WorkflowStepResult`) specifically so a resumed run does not re-bill the model. Directing's
+choice is looked up as "the most recent successful Directing step for this run", not scoped
+to the current attempt, since only a remediation that specifically targets Directing should
+produce a new one — restarting at Writing or later keeps the existing template choice.
+
+**`ItemStateMachine` is now actually enforced**, not only unit-tested: a private
+`TransitionTo` helper checks `IsLegalTransition` before every `item.MoveTo`, and throws —
+per §6's own words, "an illegal transition is a bug, not a runtime condition" — rather than
+letting `ContentItem.MoveTo`'s much looser terminal-only guard wave it through.
+
+**Scope of this pass, stated plainly:**
+- Only `StaticPost` items are driven; carousels and reels immediately go to
+  `NeedsHumanReview` with a clear reason — they need their own composition logic Phase 7/8
+  will add.
+- Budget enforcement is not wired in (`WorkflowDecisionContext.Budget` is always null here);
+  nothing yet sums `CostEntry` or writes a `BudgetReservation`. §24's attempt-count and
+  step-count ceilings still apply; the cost ceilings do not yet.
+- `AssetGeneration` is a pass-through — no image generation client exists, so only
+  templates whose required assets are all user uploads can complete.
+- The `Replan` outcome (repetitive content) goes to `NeedsHumanReview` with an honest reason
+  rather than actually re-planning, since `CampaignWorkflow` does not exist yet to act on it.
+
+**Also fixed along the way:** a genuine bug this work surfaced in `PingWalkingSkeletonTests`
+— `JobDispatcher.ExecuteAsync` resolves every registered `IJobHandler` on every dispatch
+attempt (`services.GetServices<IJobHandler>()`), so once `ContentItemWorkflowJobHandler`
+joined that list, any minimal test host lacking `Ai:Profiles` configuration broke dispatch
+of every job type, not just this one — `ModelProfileRegistry`'s constructor refuses to
+build with zero profiles configured. Fixed by giving that test's host a minimal profile
+entry, since the real `appsettings.json` always has real profiles and production is
+unaffected. Worth knowing if another minimal host adds a job type with a rich dependency
+chain: the dispatcher's per-dispatch eager resolution of the whole handler set means every
+handler's constructor has to succeed in every host that runs it, whether or not that host
+will ever see that job type.
+
+**What is left for "generate week" to run unattended:** `CampaignWorkflow` (plan → fan out
+items → package) — nothing creates a `WorkflowRun` or enqueues the first
+`AdvanceContentItemWorkflowPayload` for an item yet, so this handler currently has no
+caller in the running system, only in its own tests. The manual trigger endpoint and the
+Hangfire weekly cron. Budget reservation and enforcement. Carousel and reel composition.
+Image generation.
+
+354 unit tests unchanged, 57 integration tests (2 new, plus the `PingWalkingSkeletonTests`
+fix), 10 architecture and the workflow smoke test green; full build clean.

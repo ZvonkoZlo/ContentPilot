@@ -57,16 +57,26 @@ public sealed class WorkflowStep : Entity, ITenantOwned, IAppendOnly
     /// <summary>Set for steps that called an agent, so cost and prompt version are traceable.</summary>
     public Guid? AgentRunId { get; private set; }
 
+    /// <summary>
+    /// A compact JSON record of what this step decided, for the next step to build on —
+    /// which template and aspect ratio Directing chose, for instance, so Writing and
+    /// SpecAssembly do not have to re-derive it or wait on a fresh model call. Not for
+    /// large payloads; those go to object storage the same way an <c>AgentRun</c>'s prompt
+    /// and response already do.
+    /// </summary>
+    public string? ResultJson { get; private set; }
+
     public string? Error { get; private set; }
 
     public DateTimeOffset StartedAt { get; private set; }
 
     public DateTimeOffset? CompletedAt { get; private set; }
 
-    public void Succeed(DateTimeOffset now, Guid? agentRunId = null)
+    public void Succeed(DateTimeOffset now, Guid? agentRunId = null, string? resultJson = null)
     {
         Outcome = WorkflowStepOutcome.Succeeded;
         AgentRunId = agentRunId;
+        ResultJson = resultJson;
         CompletedAt = now;
     }
 

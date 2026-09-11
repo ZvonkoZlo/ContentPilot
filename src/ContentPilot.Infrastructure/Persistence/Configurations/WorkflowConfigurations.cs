@@ -53,6 +53,7 @@ public sealed class WorkflowStepConfiguration : IEntityTypeConfiguration<Workflo
         builder.Property(s => s.StepName).HasMaxLength(80).IsRequired();
         builder.Property(s => s.IdempotencyKey).HasMaxLength(200).IsRequired();
         builder.Property(s => s.Outcome).HasConversion<short>().IsRequired();
+        builder.Property(s => s.ResultJson).HasColumnType("jsonb");
         builder.Property(s => s.Error).HasMaxLength(2000);
         builder.Property(s => s.StartedAt).IsRequired();
 

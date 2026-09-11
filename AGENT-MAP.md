@@ -47,7 +47,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 2 — Renderer and static templates | 1206 | done |
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
-| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — policy landed, worker loop not wired |
+| 5 — Orchestrator, retries, self-correction | 1266 | partial (`claude`) — item loop runs end to end; no CampaignWorkflow/trigger/cron/budget/carousels/reels |
 | 6 — Visual QA and Marketing QA | 1285 | unclaimed |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |
@@ -117,22 +117,31 @@ QualityConfigurations.cs`. Calibration harness and threshold rationale:
 `tests/ContentPilot.RendererTests/FidelityCalibrationTests.cs`, regenerating
 `artifacts/fidelity-calibration.md` (git-ignored) on every run.
 
-**Orchestration (policy only — no worker loop yet)** — `Application/Orchestration/`
-(`ItemStateMachine` — legal §7 item transitions and loop-safety; `RemediationRouter` —
-§8 finding-code-to-restart-step table plus the escalation ladder; `BudgetGuard` —
-§24 reserve-then-commit; `OrchestratorCore.Decide` — the `(WorkflowRun, WorkflowStep[]) =>
-NextAction` function §6 names directly, combining the other three into one decision).
-`Domain/Workflow/` (`WorkflowRun` — attempt counters and deadline read from
-`Domain.Tenancy.TenantLimits`, `WorkflowStep` — append-only, idempotency key
-`(RunId, StepName, Attempt)`, `BudgetReservation`); `ContentRevision` lives in
-`Domain/Content/` next to `ContentItem`. EF configuration in
-`Infrastructure/Persistence/Configurations/WorkflowConfigurations.cs`. The renderer client —
-`Application/Abstractions/IRendererClient.cs`, implemented by
-`Infrastructure/Rendering/HttpRendererClient.cs`, registered via
-`AddContentPilotRendererClient` — gives the Rendering and Validating steps a real way to
-reach the Renderer service, alongside `TemplateSelector` for Directing and
-`DeterministicQaSuite` for Validating's deterministic half. Nothing yet calls `Decide` from
-a job — see PARALLEL-WORK.md's phase 5 sections for what is still missing.
+**Orchestration** — `Application/Orchestration/` (`ItemStateMachine` — legal §7 item
+transitions and loop-safety; `RemediationRouter` — §8 finding-code-to-restart-step table
+plus the escalation ladder; `BudgetGuard` — §24 reserve-then-commit, not yet wired to a
+caller; `OrchestratorCore.Decide` — the `(WorkflowRun, WorkflowStep[]) => NextAction`
+function §6 names directly). `Domain/Workflow/` (`WorkflowRun` — attempt counters and
+deadline read from `Domain.Tenancy.TenantLimits`, `WorkflowStep` — append-only, idempotency
+key `(RunId, StepName, Attempt)`, plus `ResultJson` for carrying one step's decision to the
+next; `BudgetReservation`); `ContentRevision` lives in `Domain/Content/` next to
+`ContentItem`. EF configuration in `Infrastructure/Persistence/Configurations/
+WorkflowConfigurations.cs`. The renderer client — `Application/Abstractions/
+IRendererClient.cs`, implemented by `Infrastructure/Rendering/HttpRendererClient.cs` — gives
+Rendering and Validating a real way to reach the Renderer service, alongside
+`TemplateSelector` for Directing, `SpecAssembler` for SpecAssembly, and
+`DeterministicQaSuite` for Validating's deterministic half.
+
+**The caller** — `Infrastructure/Jobs/ContentItemWorkflowJobHandler.cs` (job type
+`advance-content-item-workflow`, payload `Application/Jobs/
+AdvanceContentItemWorkflowPayload.cs`) drives a `StaticPost` item's `WorkflowRun` end to
+end: Directing → Writing → SpecAssembly → AssetGeneration → Rendering → Validating,
+looping through as many steps as it can in one job invocation and re-enqueuing only on a
+remediation restart. Proven against real Postgres/MinIO in
+`tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs`. No
+`CampaignWorkflow`, manual trigger, or cron exists yet to actually create a `WorkflowRun`
+and call this — see PARALLEL-WORK.md's phase 5 sections for the full, honestly-scoped list
+of what "generate week" still needs.
 
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation
