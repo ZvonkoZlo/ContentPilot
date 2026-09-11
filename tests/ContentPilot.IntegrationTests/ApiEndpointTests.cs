@@ -4,9 +4,11 @@ using System.Net.Http.Json;
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Observability;
+using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.IntegrationTests.Infrastructure;
 using ContentPilot.TestSupport;
+using ImageMagick;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
@@ -443,11 +445,117 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
+    [DockerFact]
+    public async Task Approving_a_needs_review_item_promotes_it_and_leaves_a_history_entry()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 5, 24) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var store = scope.ServiceProvider.GetRequiredService<IObjectStore>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaign!.Id, ContentItemType.StaticPost, "Approved late by a human", "problem-solution", "n/a", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var run = new WorkflowRun(_tenantId, campaign.Id, WorkflowScope.Item, item.Id, DateTimeOffset.UtcNow);
+        db.WorkflowRuns.Add(run);
+        await db.SaveChangesAsync();
+
+        var writingStep = new WorkflowStep(_tenantId, run.Id, nameof(ContentItemStatus.Writing), 1, DateTimeOffset.UtcNow);
+        writingStep.Succeed(DateTimeOffset.UtcNow, resultJson: """{"slots":[{"id":"headline","text":"Late but worth it"}],"fact_citations":[]}""");
+        db.WorkflowSteps.Add(writingStep);
+        await db.SaveChangesAsync();
+
+        using var fakeImage = new MagickImage(MagickColors.White, 600u, 750u);
+        fakeImage.Format = MagickFormat.Png;
+        var bytes = fakeImage.ToByteArray();
+        var sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+        var key = ObjectKey.ForTenant(_tenantId, $"runs/{item.Id:N}/attempts/1/{sha256}.png");
+        await using (var content = new MemoryStream(bytes))
+        {
+            await store.PutAsync(key, content, "image/png", default);
+        }
+
+        var asset = new ContentAsset(_tenantId, item.Id, 1, ContentAssetKind.Image, key, "image/png", sha256, bytes.Length, DateTimeOffset.UtcNow, 600, 750);
+        db.ContentAssets.Add(asset);
+        await db.SaveChangesAsync();
+
+        item.PromoteBestAttempt(asset.Id);
+        item.SendToHumanReview("Ran out of attempts.");
+        await db.SaveChangesAsync();
+
+        var response = await _client.PostAsync($"/api/campaigns/{campaign.Id}/items/{item.Id}/approve", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var approved = await response.Content.ReadFromJsonAsync<ItemStatusDto>();
+        approved!.Status.ShouldBe("Approved");
+
+        var history = await db.ContentHistory.AsNoTracking().SingleAsync(h => h.ContentItemId == item.Id);
+        history.Hook.ShouldBe("Late but worth it");
+
+        var package = await db.CampaignPackages.AsNoTracking().SingleAsync(p => p.CampaignId == campaign.Id);
+        package.ManifestJson.ShouldContain("post-01/image.png");
+    }
+
+    [DockerFact]
+    public async Task Approving_an_item_that_is_not_needs_review_is_a_conflict()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 5, 31) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaign!.Id, ContentItemType.StaticPost, "Still pending", "problem-solution", "n/a", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var response = await _client.PostAsync($"/api/campaigns/{campaign.Id}/items/{item.Id}/approve", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [DockerFact]
+    public async Task Rejecting_a_needs_review_item_moves_it_to_failed_with_the_reviewers_reason()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 6, 7) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaign!.Id, ContentItemType.StaticPost, "Not good enough", "problem-solution", "n/a", DayOfWeek.Monday, 1);
+        item.SendToHumanReview("Ran out of attempts.");
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/campaigns/{campaign.Id}/items/{item.Id}/reject", new { reason = "Off-brand tone throughout." });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var rejected = await response.Content.ReadFromJsonAsync<ItemStatusDto>();
+        rejected!.Status.ShouldBe("Failed");
+        rejected.FailureReason.ShouldBe("Off-brand tone throughout.");
+
+        (await db.ContentHistory.CountAsync(h => h.ContentItemId == item.Id)).ShouldBe(0);
+    }
+
     private sealed record CampaignDto(Guid Id, Guid BrandId, string Status);
 
     private sealed record ItemDto(Guid Id, string Topic);
 
     private sealed record RatingDto(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
+
+    private sealed record ItemStatusDto(
+        Guid Id, int Ordinal, string Type, string Topic, string Pillar, string PublishDay, string Status, int QualityAttempts, string? FailureReason);
 
     private sealed record DownloadDto(string Url);
 

@@ -181,11 +181,16 @@ object-storage bytes. `Worker/Program.cs` seeds the first occurrence of each of 
 idempotently on startup. `Api/Endpoints/CampaignEndpoints.cs` — `POST /api/campaigns`,
 `GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items`, `POST
 /api/campaigns/{id}/cancel`, `GET /api/campaigns/{id}/package`, `POST
-/api/campaigns/{id}/items/{itemId}/rating`, `GET /api/campaigns/{id}/cost` — is the manual
+/api/campaigns/{id}/items/{itemId}/rating`, `GET /api/campaigns/{id}/cost`, `POST
+/api/campaigns/{id}/items/{itemId}/approve`, `POST
+/api/campaigns/{id}/items/{itemId}/reject` — is the manual
 trigger from §21, its read side, cancellation (campaign-level only; items already in flight
-are not reached), the package index, the 1–5 human rating, and §23's "what did this campaign
+are not reached), the package index, the 1–5 human rating, §23's "what did this campaign
 cost" (total + per-agent breakdown + budget remaining, from the same `CostEntry` ledger
-`BudgetGuard` reads). Proven end to
+`BudgetGuard` reads), and the human-review resolution (approve/reject) a `NeedsHumanReview`
+item was otherwise stuck without. `Infrastructure/Content/ContentHistoryRecorder.cs` is the
+§14 write shared between a clean auto-approval (`ContentItemWorkflowJobHandler`) and the
+approve endpoint. Proven end to
 end against real Postgres/MinIO in `ContentItemWorkflowJobHandlerTests.cs`,
 `CampaignWorkflowJobHandlerTests.cs`, `CampaignTriggerJobHandlerTests.cs`,
 `CampaignPackagerTests.cs`, and the campaign/package/rating tests appended to

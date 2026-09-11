@@ -59,6 +59,7 @@ public sealed class ContentItemWorkflowJobHandler(
     VisualQaAgent visualQa,
     MarketingQaAgent marketingQa,
     Branding.ContentMemoryReader recentContentReader,
+    Content.ContentHistoryRecorder historyRecorder,
     IModelProfileRegistry profiles,
     PromptLibrary prompts,
     ILogger<ContentItemWorkflowJobHandler> logger)
@@ -668,26 +669,10 @@ public sealed class ContentItemWorkflowJobHandler(
             .Select(c => c.BrandId)
             .FirstOrDefaultAsync(ct);
 
-        var copySet = await LoadCopySetAsync(run.Id, attempt, ct);
-        var hook = copySet?.Slots.FirstOrDefault()?.Text ?? item.Topic;
-        var directing = await LoadDirectingResultAsync(run.Id, ct);
-
-        var entry = new ContentHistoryEntry(
-            item.TenantId, brandId, item.Id, item.Type, item.Topic, item.Pillar, hook,
-            SimHash.Compute(item.Topic), SimHash.Compute(hook), directing?.TemplateId, now);
-
-        // Set only while the row is still Added, never after: ContentHistoryEntry is
-        // append-only, so a later attempt to update this field — a human rating the item
-        // days afterward, say — has to happen through the separate, mutable HumanRating
-        // table instead, exactly why that table exists. The score itself comes from the
-        // caller's in-memory QaReports, not a fresh query — those QualityReview rows are
-        // only Added at this point, not yet saved, so an AsNoTracking read would miss them.
-        if (qualityScore is { } score)
-        {
-            entry.SetQualityScore(score);
-        }
-
-        db.ContentHistory.Add(entry);
+        // The score comes from the caller's in-memory QaReports, not a fresh query — those
+        // QualityReview rows are only Added at this point in FinishAttemptAsync, not yet
+        // saved, so an AsNoTracking read would miss them.
+        await historyRecorder.RecordAsync(item, brandId, run.Id, attempt, qualityScore, now, ct);
     }
 
     private static string ExtensionFor(string mediaType) => mediaType switch

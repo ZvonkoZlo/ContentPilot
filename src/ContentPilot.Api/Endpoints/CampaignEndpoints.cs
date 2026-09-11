@@ -3,7 +3,9 @@ using ContentPilot.Application.Campaigns;
 using ContentPilot.Application.Quality;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Packaging;
+using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Campaigns;
+using ContentPilot.Infrastructure.Content;
 using ContentPilot.Infrastructure.Packaging;
 using ContentPilot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -202,6 +204,112 @@ public static class CampaignEndpoints
             "how much of the tenant's per-campaign budget is left. Sums CostEntry directly " +
             "— the same ledger BudgetGuard and the reserve-then-commit checks read from.");
 
+        group.MapPost("/{id:guid}/items/{itemId:guid}/approve", async (
+            Guid id, Guid itemId, AppDbContext db, ContentHistoryRecorder historyRecorder,
+            CampaignPackager packager, IUnitOfWork uow, IClock clock, CancellationToken ct) =>
+        {
+            var campaign = await db.ContentCampaigns.FirstOrDefaultAsync(c => c.Id == id, ct);
+
+            if (campaign is null)
+            {
+                return Results.NotFound();
+            }
+
+            var item = await db.ContentItems.FirstOrDefaultAsync(i => i.Id == itemId && i.CampaignId == id, ct);
+
+            if (item is null)
+            {
+                return Results.NotFound(new { detail = $"No item '{itemId}' in campaign '{id}'." });
+            }
+
+            if (item.Status != ContentItemStatus.NeedsHumanReview)
+            {
+                return Results.Conflict(new { detail = $"Item is {item.Status}, not NeedsHumanReview — nothing to approve." });
+            }
+
+            var now = clock.UtcNow;
+            item.Approve();
+
+            // §14: an item approved after human review earns the same "don't repeat this"
+            // protection a clean first-pass approval gets from ContentItemWorkflowJobHandler
+            // — same recorder, same entry shape, the only difference is where the score and
+            // attempt number come from (both already committed here, unlike a call made
+            // mid-transaction from inside the item's own workflow job).
+            if (item.BestAssetId is { } bestAssetId)
+            {
+                var asset = await db.ContentAssets.AsNoTracking().FirstOrDefaultAsync(a => a.Id == bestAssetId, ct);
+                var run = await db.WorkflowRuns.AsNoTracking()
+                    .FirstOrDefaultAsync(r => r.Scope == WorkflowScope.Item && r.EntityId == item.Id, ct);
+
+                if (asset is not null && run is not null)
+                {
+                    var scores = await db.QualityReviews.AsNoTracking()
+                        .Where(q => q.ContentItemId == item.Id && q.Attempt == asset.Attempt)
+                        .Select(q => q.Score)
+                        .ToListAsync(ct);
+
+                    await historyRecorder.RecordAsync(
+                        item, campaign.BrandId, run.Id, asset.Attempt,
+                        scores.Count > 0 ? scores.Average() : null, now, ct);
+                }
+            }
+
+            // The manifest has to reflect the newly-approved item, or the download endpoint
+            // keeps serving whatever it packaged last — CampaignPackage.Rebuild() clears
+            // ZipKey too, so the cached ZIP is invalidated in the same stroke.
+            await packager.BuildAsync(campaign, ct);
+            await uow.SaveChangesAsync(ct);
+
+            return Results.Ok(new ContentItemResponse(
+                item.Id, item.Ordinal, item.Type.ToString(), item.Topic, item.Pillar, item.PublishDay.ToString(),
+                item.Status.ToString(), item.QualityAttempts, item.FailureReason));
+        })
+        .WithSummary(
+            "Approves an item stuck in NeedsHumanReview: promotes it to Approved, records " +
+            "its §14 content-history entry, and rebuilds the campaign package so the " +
+            "download reflects it. 409 if the item isn't in NeedsHumanReview.");
+
+        group.MapPost("/{id:guid}/items/{itemId:guid}/reject", async (
+            Guid id, Guid itemId, RejectItemRequest request, AppDbContext db,
+            CampaignPackager packager, IUnitOfWork uow, CancellationToken ct) =>
+        {
+            var campaign = await db.ContentCampaigns.FirstOrDefaultAsync(c => c.Id == id, ct);
+
+            if (campaign is null)
+            {
+                return Results.NotFound();
+            }
+
+            var item = await db.ContentItems.FirstOrDefaultAsync(i => i.Id == itemId && i.CampaignId == id, ct);
+
+            if (item is null)
+            {
+                return Results.NotFound(new { detail = $"No item '{itemId}' in campaign '{id}'." });
+            }
+
+            if (item.Status != ContentItemStatus.NeedsHumanReview)
+            {
+                return Results.Conflict(new { detail = $"Item is {item.Status}, not NeedsHumanReview — nothing to reject." });
+            }
+
+            // Fail() rather than a bespoke Rejected status: a rejected item is exactly what
+            // Failed already means downstream — it stays out of plan.json's numbering, is
+            // listed with folder: null, and never leaves a ContentHistoryEntry, same as any
+            // other item nothing ever got approved.
+            item.Fail(request.Reason ?? "Rejected by reviewer.");
+
+            await packager.BuildAsync(campaign, ct);
+            await uow.SaveChangesAsync(ct);
+
+            return Results.Ok(new ContentItemResponse(
+                item.Id, item.Ordinal, item.Type.ToString(), item.Topic, item.Pillar, item.PublishDay.ToString(),
+                item.Status.ToString(), item.QualityAttempts, item.FailureReason));
+        })
+        .WithSummary(
+            "Rejects an item stuck in NeedsHumanReview: moves it to Failed with the " +
+            "reviewer's reason and rebuilds the campaign package. 409 if the item isn't in " +
+            "NeedsHumanReview.");
+
         group.MapPost("/{id:guid}/items/{itemId:guid}/rating", async (
             Guid id, Guid itemId, RateItemRequest request, AppDbContext db, IUnitOfWork uow, IClock clock, CancellationToken ct) =>
         {
@@ -265,6 +373,8 @@ public sealed record ContentItemResponse(
 public sealed record CampaignPackageResponse(Guid CampaignId, DateTimeOffset BuiltAt, DateTimeOffset? EmailSentAt, string ManifestJson);
 
 public sealed record RateItemRequest(int Score, string? Note);
+
+public sealed record RejectItemRequest(string? Reason);
 
 public sealed record RatingResponse(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
 

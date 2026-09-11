@@ -31,6 +31,7 @@ src/ContentPilot.Infrastructure/Rendering/
 src/ContentPilot.Infrastructure/Packaging/
 src/ContentPilot.Infrastructure/Persistence/Migrations/
 src/ContentPilot.Infrastructure/Tenancy/
+src/ContentPilot.Infrastructure/Content/
 src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
 src/ContentPilot.Api/Endpoints/AdminEndpoints.cs
 src/ContentPilot.Worker/Program.cs
@@ -167,8 +168,15 @@ session cannot produce — but the read-only half of "admin views" needed none o
 Manual step advance and campaign re-run are deliberately not built — both are real,
 consequential actions that deserve their own considered endpoint, not a visibility sweep.
 
-**Not yet built anywhere:** the review UI (no frontend exists at all), the weekly email, a
-tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide (not just
-per-campaign) QA pass-rate aggregate, §27's eval scenarios (need golden fixture images), the
-metric dashboard, budget recalibration from real campaigns, and a performed backup/restore
-drill.
+**Also landed**: `POST /api/campaigns/{id}/items/{itemId}/approve` and `.../reject` — the
+missing half of Phase 8's "review UI: approve, reject... and the 1–5 rating" (only rating
+existed before). Approve writes the same §14 `ContentHistoryEntry` a clean first-pass
+approval gets (now via a shared `Infrastructure/Content/ContentHistoryRecorder.cs`, extracted
+out of the job handler so both callers stay in sync) and rebuilds the package; reject reuses
+`ContentItemStatus.Failed` rather than inventing a new status.
+
+**Not yet built anywhere:** the review UI itself (no frontend exists at all), the weekly
+email, a tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide
+(not just per-campaign) QA pass-rate aggregate, §27's eval scenarios (need golden fixture
+images), the metric dashboard, budget recalibration from real campaigns, and a performed
+backup/restore drill.

@@ -1169,3 +1169,33 @@ considered endpoint and probably their own confirmation step, not a visibility s
 with a "make it go" button.
 
 386 unit, 10 architecture, 97 integration (2 new), 1 workflow test green; full build clean.
+
+### Phase 8's missing piece: approve/reject for NeedsHumanReview (`claude`)
+
+Found the actual gap behind a promise I'd already written into the download endpoint's own
+doc comment ("rebuilt automatically... after the package itself changes — an item approved
+late, say"): **there was no way for anything to approve an item late.** Rating existed;
+approve/reject did not. §8's plan section lists "Review UI: approve, reject, view findings...
+and the 1–5 rating" as one feature — only the rating half had landed.
+
+`POST /api/campaigns/{id}/items/{itemId}/approve` and `.../reject`, both 409 unless the item
+is `NeedsHumanReview`:
+
+- **Approve**: `item.Approve()`, records the same §14 `ContentHistoryEntry` a clean
+  first-pass approval gets (see below), then rebuilds the campaign package so the manifest
+  and, on the next download, the ZIP reflect the newly-approved item.
+- **Reject**: `item.Fail(reason)` — deliberately not a bespoke "Rejected" status; a rejected
+  item is exactly what `Failed` already means everywhere downstream (no folder in
+  `plan.json`, no `ContentHistoryEntry`, no numbering slot), so reusing it costs nothing and
+  invents no new state for the packager or the pass-rate metric to special-case.
+
+**Extracted `ContentHistoryRecorder`** (`Infrastructure/Content/`) out of
+`ContentItemWorkflowJobHandler`'s private `RecordContentHistoryAsync` so the approve endpoint
+and the job handler write the identical entry shape rather than two versions drifting apart.
+The one difference between callers is where `qualityScore` comes from — the job handler
+computes it from in-memory `QaReport`s mid-transaction (those rows aren't saved yet, so a
+fresh query would miss them), the endpoint queries already-committed `QualityReview` rows
+directly — so the recorder takes the score as a parameter rather than computing it itself,
+letting both callers stay correct for their own situation.
+
+386 unit, 10 architecture, 100 integration (3 new), 1 workflow test green; full build clean.

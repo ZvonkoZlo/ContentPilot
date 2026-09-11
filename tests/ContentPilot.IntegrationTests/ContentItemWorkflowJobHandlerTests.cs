@@ -270,6 +270,7 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
             new VisualQaAgent(),
             new MarketingQaAgent(),
             scope.ServiceProvider.GetRequiredService<ContentMemoryReader>(),
+            scope.ServiceProvider.GetRequiredService<ContentPilot.Infrastructure.Content.ContentHistoryRecorder>(),
             new FakeModelProfileRegistry(),
             PromptLibrary.LoadEmbedded(),
             NullLogger<ContentItemWorkflowJobHandler>.Instance);
