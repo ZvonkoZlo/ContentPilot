@@ -5,6 +5,7 @@ using ContentPilot.Application.Agents;
 using ContentPilot.Application.Packaging;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Packaging;
+using ContentPilot.Domain.Quality;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,14 @@ namespace ContentPilot.Infrastructure.Packaging;
 /// <see cref="ContentItemType.StaticPost"/> is actually driven end to end (Phase 5's own
 /// scope note). Carousel and reel items are still listed in <c>plan.json</c>, honestly
 /// marked with no folder, rather than silently skipped.
+/// </para>
+/// <para>
+/// §12 is explicit that a campaign needing review is not hidden from the user: an
+/// <see cref="ContentItemStatus.NeedsHumanReview"/> item that still has a promoted best
+/// attempt is packaged under <c>_needs-review/item-NN/</c> rather than the stable
+/// <c>post-NN/</c> numbering — a human still has something to look at, but it never
+/// occupies a slot in the numbering an approved post owns. Its <c>metadata.json</c> carries
+/// the findings that sent it there, exactly as the plan asks for.
 /// </para>
 /// </summary>
 public sealed class CampaignPackager(AppDbContext db, IObjectStore store, IClock clock)
@@ -42,16 +51,36 @@ public sealed class CampaignPackager(AppDbContext db, IObjectStore store, IClock
     {
         var items = await db.ContentItems
             .Where(i => i.CampaignId == campaign.Id)
-            .OrderBy(i => i.Ordinal)
             .ToListAsync(ct);
 
         var files = new List<PackageManifestFile>();
         var planItems = new List<CampaignPlanItem>();
         var typeCounters = new Dictionary<ContentItemType, int>();
+        var needsReviewCounter = 0;
 
-        foreach (var item in items)
+        // Stable across ZIP downloads and email links per §13: numbering is assigned by
+        // publish day then creation order, not by whatever order the query happened to
+        // return rows in.
+        foreach (var item in items.OrderBy(i => i.PublishDay).ThenBy(i => i.Ordinal))
         {
-            var folder = await PackageItemAsync(campaign, item, typeCounters, files, ct);
+            string? folder;
+
+            if (item.Status == ContentItemStatus.NeedsHumanReview)
+            {
+                folder = await PackageNeedsReviewItemAsync(campaign, item, needsReviewCounter + 1, files, ct);
+
+                // Only consume a number when something was actually packaged — an item
+                // routed to review with nothing ever rendered (no eligible template, say)
+                // must not leave a gap in _needs-review/item-NN for the ones that did.
+                if (folder is not null)
+                {
+                    needsReviewCounter++;
+                }
+            }
+            else
+            {
+                folder = await PackageItemAsync(campaign, item, typeCounters, files, ct);
+            }
 
             planItems.Add(new CampaignPlanItem
             {
@@ -116,6 +145,51 @@ public sealed class CampaignPackager(AppDbContext db, IObjectStore store, IClock
         typeCounters[item.Type] = ordinal;
         var folder = $"{FolderPrefix(item.Type)}-{ordinal:D2}";
 
+        await PackageAssetAsync(campaign, item, asset, folder, files, extraMetadata: null, ct);
+
+        return folder;
+    }
+
+    /// <returns>The item's folder name, or null when it has nothing packageable yet.</returns>
+    private async Task<string?> PackageNeedsReviewItemAsync(
+        ContentCampaign campaign,
+        ContentItem item,
+        int needsReviewCounter,
+        List<PackageManifestFile> files,
+        CancellationToken ct)
+    {
+        var asset = await ResolveAssetAsync(item, ct);
+
+        if (asset is null)
+        {
+            return null;
+        }
+
+        var folder = $"_needs-review/item-{needsReviewCounter:D2}";
+
+        var reviews = await db.QualityReviews.AsNoTracking()
+            .Where(q => q.ContentItemId == item.Id && q.Attempt == asset.Attempt)
+            .ToListAsync(ct);
+
+        var findings = reviews
+            .SelectMany(q => q.Findings)
+            .Select(f => new { code = f.Code.ToString(), severity = f.Severity.ToString(), detail = f.Detail })
+            .ToList();
+
+        await PackageAssetAsync(campaign, item, asset, folder, files, extraMetadata: new { findings, failure_reason = item.FailureReason }, ct);
+
+        return folder;
+    }
+
+    private async Task PackageAssetAsync(
+        ContentCampaign campaign,
+        ContentItem item,
+        ContentAsset asset,
+        string folder,
+        List<PackageManifestFile> files,
+        object? extraMetadata,
+        CancellationToken ct)
+    {
         // Buffered rather than streamed straight through: the object store's read side may
         // hand back a stream with no known length (a network response stream), and the S3
         // client needs to know the content length up front to sign the PUT.
@@ -154,11 +228,10 @@ public sealed class CampaignPackager(AppDbContext db, IObjectStore store, IClock
             publish_day = item.PublishDay.ToString(),
             attempt = asset.Attempt,
             fact_citations = copySet?.FactCitations ?? [],
+            review = extraMetadata,
         };
 
         await UploadJsonAsync(campaign, $"{folder}/metadata.json", metadata, ct, files);
-
-        return folder;
     }
 
     /// <summary>

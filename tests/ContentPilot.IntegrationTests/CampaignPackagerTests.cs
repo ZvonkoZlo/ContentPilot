@@ -208,6 +208,76 @@ public sealed class CampaignPackagerTests(ContentPilotFixture fixture)
         rebuilt.ZipKey.ShouldBeNull();
     }
 
+    [DockerFact]
+    public async Task An_item_needing_review_is_packaged_separately_with_its_findings()
+    {
+        var weekStart = new DateOnly(2036, 1, 7).AddDays(7 * Interlocked.Increment(ref _week));
+
+        var scope = fixture.CreateScope();
+        var seeder = scope.ServiceProvider.GetRequiredService<GoldenTenantSeeder>();
+        var seeded = await seeder.SeedAsync();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(seeded.TenantId);
+
+        var brandReader = scope.ServiceProvider.GetRequiredService<IBrandBrainReader>();
+        var version = await brandReader.CaptureVersionAsync(seeded.BrandId);
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var store = scope.ServiceProvider.GetRequiredService<IObjectStore>();
+
+        var campaign = new ContentCampaign(seeded.TenantId, seeded.BrandId, weekStart, CampaignTrigger.Manual, version.VersionId, 200_000_000);
+        db.ContentCampaigns.Add(campaign);
+
+        var item = new ContentItem(
+            seeded.TenantId, campaign.Id, ContentItemType.StaticPost,
+            "Ran out of remediation attempts", "problem-solution", "n/a", DayOfWeek.Tuesday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var bytes = FakePng(600, 750);
+        var sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes));
+        var key = ObjectKey.ForTenant(seeded.TenantId, $"runs/{item.Id:N}/attempts/2/{sha256}.png");
+        await using (var content = new MemoryStream(bytes))
+        {
+            await store.PutAsync(key, content, "image/png", default);
+        }
+
+        var asset = new ContentAsset(seeded.TenantId, item.Id, 2, ContentAssetKind.Image, key, "image/png", sha256, bytes.Length, Now, 600, 750);
+        db.ContentAssets.Add(asset);
+        await db.SaveChangesAsync();
+
+        db.QualityReviews.Add(new Domain.Quality.QualityReview(
+            seeded.TenantId, item.Id, 2, Domain.Quality.QaGate.Visual, Domain.Quality.QaOutcome.Fail, 0.2,
+            [new Domain.Quality.QaFinding { Code = Domain.Quality.QaFindingCode.OffBrand, Severity = Domain.Quality.QaSeverity.Blocking, Confidence = 0.9, Detail = "Colours drift from the brand palette" }],
+            Now));
+        await db.SaveChangesAsync();
+
+        item.PromoteBestAttempt(asset.Id);
+        item.SendToHumanReview("Quality attempts exhausted.");
+        await db.SaveChangesAsync();
+
+        var packager = scope.ServiceProvider.GetRequiredService<CampaignPackager>();
+        var package = await packager.BuildAsync(campaign, default);
+        await db.SaveChangesAsync();
+
+        var manifest = JsonSerializer.Deserialize<JsonElement>(package.ManifestJson);
+        var files = manifest.GetProperty("files").EnumerateArray().Select(f => f.GetProperty("path").GetString()).ToList();
+
+        files.ShouldContain("_needs-review/item-01/image.png");
+        files.ShouldContain("_needs-review/item-01/metadata.json");
+        files.ShouldNotContain(p => p!.StartsWith("post-", StringComparison.Ordinal));
+
+        var metadataKey = ObjectKey.ForTenant(campaign.TenantId, $"campaigns/{campaign.Id:N}/_needs-review/item-01/metadata.json");
+        await using var metadataStream = await store.GetAsync(metadataKey);
+        var metadata = await JsonSerializer.DeserializeAsync<JsonElement>(metadataStream);
+
+        var findings = metadata.GetProperty("review").GetProperty("findings");
+        findings.GetArrayLength().ShouldBe(1);
+        findings[0].GetProperty("code").GetString().ShouldBe("OffBrand");
+        metadata.GetProperty("review").GetProperty("failure_reason").GetString().ShouldBe("Quality attempts exhausted.");
+
+        await using var _scope = scope;
+    }
+
     private async Task<(ContentCampaign Campaign, ContentItem Item, AsyncServiceScope Scope)> SetupApprovedItemAsync()
     {
         var weekStart = new DateOnly(2036, 1, 7).AddDays(7 * Interlocked.Increment(ref _week));

@@ -114,5 +114,10 @@ cached on `CampaignPackage.ZipKey` — `Rebuild()` already clears it, so a stale
 served and an unchanged package never rebuilds one. `POST /api/campaigns/{id}/download`
 returns a 15-minute presigned URL, building the ZIP the first time it's asked for.
 
+Items needing review are no longer hidden from the package either: `NeedsHumanReview` items
+with a promoted best attempt package into `_needs-review/item-NN/` (separate numbering from
+`post-NN`) with their QA findings and failure reason in `metadata.json`. Numbering is also
+now stable per §13 (publish day then creation order).
+
 **Not yet built:** the review UI (no frontend exists at all yet), the weekly email,
 retention/tenant-deletion jobs.

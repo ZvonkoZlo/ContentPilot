@@ -965,3 +965,21 @@ build clean.
 browse/rating/download API all done. **Still open**: the review UI — there is still no
 frontend anywhere in this repository, which matters more than any remaining backend piece
 if the goal is "a person can actually use this" — and the weekly email.
+
+### Phase 8 continued — needs-review items are no longer hidden from the package (`claude`)
+
+§12 is explicit that a campaign needing review is not silently missing from the download: an
+item stuck in `NeedsHumanReview` (with a promoted best attempt) now packages into
+`_needs-review/item-NN/` rather than the stable `post-NN/` numbering an approved item owns —
+its `metadata.json` carries the findings that sent it there (`review.findings`, each with
+code/severity/detail) plus `review.failure_reason`. An item that reached human review with
+nothing ever rendered (no eligible template) still contributes no folder, and — now fixed —
+no longer burns a number in the `_needs-review/` sequence for the ones that did render.
+
+Also fixed numbering to match §13 exactly: `post-NN`/`reel-NN` are now assigned by publish
+day then creation order (`OrderBy(PublishDay).ThenBy(Ordinal)`), not by whatever order the
+query happened to return rows in — the plan's own point is that this numbering stays stable
+across ZIP downloads and email links, which only holds if the ordering is deterministic and
+tied to something that doesn't change between builds.
+
+380 unit, 10 architecture, 88 integration (1 new), 1 workflow test green; full build clean.
