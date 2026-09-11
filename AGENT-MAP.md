@@ -50,7 +50,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired into the live loop; still open: QA pass-rate metric, §27 evals, carousel continuity |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
-| 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` (plan.json/manifest.json, per-item folders), browse/rating API done; ZIP streaming, review UI, weekly email not started |
+| 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` + `CampaignZipBuilder`, browse/rating/download API done; review UI (no frontend exists yet) and weekly email not started |
 | 9 — Hardening, cost calibration, evals | 1342 | unclaimed |
 | 10 — Post-MVP options | 1359 | not started |
 
@@ -195,8 +195,12 @@ transition. Only `ContentAssetKind.Image` items package their files today (only
 `StaticPost` is actually driven); an item with nothing rendered is still listed in
 `plan.json`, with `folder: null`. EF configuration in
 `Infrastructure/Persistence/Configurations/PackagingConfigurations.cs`, migration
-`CampaignPackaging`. **Not yet built**: the ZIP itself (`CampaignPackage.ZipKey` stays
-null), the review UI, and the weekly email.
+`CampaignPackaging`. `Infrastructure/Packaging/CampaignZipBuilder.cs` builds
+`campaigns/{campaignId}/package.zip` on demand (temp-file streamed, not buffered),
+cached on `CampaignPackage.ZipKey` — cleared by `Rebuild()`, so a manifest change
+invalidates the cached ZIP automatically. `POST /api/campaigns/{id}/download` builds/reuses
+it and returns a 15-minute presigned URL. **Not yet built**: the review UI (no frontend
+exists at all yet), and the weekly email.
 <br>**Also landed alongside this**: rendered image bytes are now actually uploaded to
 object storage (`runs/{itemId}/attempts/{attempt}/{sha256}.ext`, content-addressed) —
 previously `ContentAsset.StorageKey` held a `pending/...` placeholder that nothing ever

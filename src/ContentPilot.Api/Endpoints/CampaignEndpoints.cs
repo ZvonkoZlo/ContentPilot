@@ -3,6 +3,7 @@ using ContentPilot.Application.Campaigns;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Packaging;
 using ContentPilot.Infrastructure.Campaigns;
+using ContentPilot.Infrastructure.Packaging;
 using ContentPilot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -114,6 +115,35 @@ public static class CampaignEndpoints
             "Reads a campaign's built package: the manifest.json content plus when it was " +
             "built. 404 until the campaign reaches Packaging. The files themselves are read " +
             "through object storage directly — this endpoint is the index, not the download.");
+
+        group.MapPost("/{id:guid}/download", async (
+            Guid id, AppDbContext db, IObjectStore store, CampaignZipBuilder zipBuilder, IUnitOfWork uow, CancellationToken ct) =>
+        {
+            var campaign = await db.ContentCampaigns.FirstOrDefaultAsync(c => c.Id == id, ct);
+
+            if (campaign is null)
+            {
+                return Results.NotFound();
+            }
+
+            var package = await db.CampaignPackages.FirstOrDefaultAsync(p => p.CampaignId == id, ct);
+
+            if (package is null)
+            {
+                return Results.NotFound(new { detail = "This campaign has not been packaged yet." });
+            }
+
+            var zipKey = await zipBuilder.BuildOrGetAsync(campaign, package, ct);
+            await uow.SaveChangesAsync(ct); // persists ZipKey if the ZIP was just built
+
+            var url = await store.GetPresignedReadUrlAsync(zipKey, TimeSpan.FromMinutes(15), ct);
+
+            return Results.Ok(new { url });
+        })
+        .WithSummary(
+            "Builds (or reuses a cached) ZIP of the whole campaign and returns a short-lived " +
+            "presigned download URL. The ZIP is rebuilt automatically the next time this is " +
+            "called after the package itself changes (an item approved late, say).");
 
         group.MapPost("/{id:guid}/items/{itemId:guid}/rating", async (
             Guid id, Guid itemId, RateItemRequest request, AppDbContext db, IUnitOfWork uow, IClock clock, CancellationToken ct) =>

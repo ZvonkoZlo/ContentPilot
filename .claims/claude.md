@@ -107,5 +107,12 @@ uploaded to `runs/{itemId}/attempts/{attempt}/{sha256}.ext` in
 including the Docker Desktop API-version workaround for running the Docker suites here
 (`DOCKER_API_VERSION=1.43 dotnet test ...`).
 
-**Not yet built:** the ZIP itself (`CampaignPackage.ZipKey` stays null), the review UI (no
-frontend exists at all yet), the weekly email, retention/tenant-deletion jobs.
+**ZIP landed too.** `CampaignZipBuilder` (`Infrastructure/Packaging/`) builds
+`campaigns/{campaignId}/package.zip` on demand from the manifest's file list (plus
+`plan.json`/`manifest.json`), streamed through a temp file rather than buffered in RAM, and
+cached on `CampaignPackage.ZipKey` — `Rebuild()` already clears it, so a stale ZIP is never
+served and an unchanged package never rebuilds one. `POST /api/campaigns/{id}/download`
+returns a 15-minute presigned URL, building the ZIP the first time it's asked for.
+
+**Not yet built:** the review UI (no frontend exists at all yet), the weekly email,
+retention/tenant-deletion jobs.

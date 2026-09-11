@@ -291,6 +291,47 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     }
 
     [DockerFact]
+    public async Task A_campaign_that_has_not_been_packaged_yet_cannot_be_downloaded()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 26) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var download = await _client.PostAsync($"/api/campaigns/{campaign!.Id}/download", null);
+
+        download.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [DockerFact]
+    public async Task Downloading_a_packaged_campaign_returns_a_url_and_reuses_it_on_a_second_call()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 5, 3) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var packager = scope.ServiceProvider.GetRequiredService<ContentPilot.Infrastructure.Packaging.CampaignPackager>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var loaded = await db.ContentCampaigns.SingleAsync(c => c.Id == campaign!.Id);
+        await packager.BuildAsync(loaded, default);
+        await db.SaveChangesAsync();
+
+        var first = await _client.PostAsync($"/api/campaigns/{campaign!.Id}/download", null);
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var firstUrl = (await first.Content.ReadFromJsonAsync<DownloadDto>())!.Url;
+        firstUrl.ShouldNotBeNullOrWhiteSpace();
+
+        var zipKeyAfterFirst = (await db.CampaignPackages.AsNoTracking().SingleAsync(p => p.CampaignId == campaign.Id)).ZipKey;
+        zipKeyAfterFirst.ShouldNotBeNullOrWhiteSpace();
+
+        var second = await _client.PostAsync($"/api/campaigns/{campaign.Id}/download", null);
+        second.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var zipKeyAfterSecond = (await db.CampaignPackages.AsNoTracking().SingleAsync(p => p.CampaignId == campaign.Id)).ZipKey;
+        zipKeyAfterSecond.ShouldBe(zipKeyAfterFirst);
+    }
+
+    [DockerFact]
     public async Task Rating_an_item_round_trips_and_a_second_rating_replaces_the_first()
     {
         var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 5) });
@@ -351,6 +392,8 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     private sealed record ItemDto(Guid Id, string Topic);
 
     private sealed record RatingDto(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
+
+    private sealed record DownloadDto(string Url);
 
     private sealed record TenantDto(Guid Id);
 

@@ -939,3 +939,29 @@ reel work only ever touched its own claimed paths (`Renderer/Video/`,
 `git merge phase-7-reels` from `main` fast-forwarded cleanly to `91f3953`.
 
 Phase 7 is now **done** on `main`. Codex's claim updated to `status: done, branch: main`.
+
+### Phase 8 continued — the ZIP, and a download endpoint (`claude`)
+
+`CampaignZipBuilder` (`Infrastructure/Packaging/CampaignZipBuilder.cs`) builds
+`campaigns/{campaignId}/package.zip` from the manifest's own file list plus `plan.json`/
+`manifest.json` (which describe themselves nowhere in the manifest, per the earlier note —
+added back in explicitly here). Streamed through a temp file (`ZipArchive` over a
+`FileStream`, one entry copied at a time straight from object storage) rather than buffered
+in memory, matching §12's "streams without buffering a large campaign" requirement. Cached
+on `CampaignPackage.ZipKey`: `BuildOrGetAsync` reuses the existing object when the key is
+set and the object still exists, and `CampaignPackage.Rebuild()` already clears `ZipKey`
+(added when the entity was first written), so re-packaging a campaign after a late approval
+automatically invalidates the stale ZIP without the zip builder needing to know why.
+
+`POST /api/campaigns/{id}/download` calls it and returns a 15-minute presigned URL — 404 if
+the campaign was never packaged, otherwise builds the ZIP the first time and reuses it on
+every call after.
+
+380 unit, 10 architecture, 87 integration (11 new: 3 in `CampaignPackagerTests` for the zip
+itself, 2 appended to `ApiEndpointTests` for the endpoint), 1 workflow test green; full
+build clean.
+
+**Phase 8 is now**: packaging (plan.json/manifest.json/per-item files), the ZIP, and
+browse/rating/download API all done. **Still open**: the review UI — there is still no
+frontend anywhere in this repository, which matters more than any remaining backend piece
+if the goal is "a person can actually use this" — and the weekly email.

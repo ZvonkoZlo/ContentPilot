@@ -126,6 +126,88 @@ public sealed class CampaignPackagerTests(ContentPilotFixture fixture)
         await using var _scope = scope;
     }
 
+    [DockerFact]
+    public async Task The_zip_contains_plan_manifest_and_every_items_files()
+    {
+        var (campaign, _, scope) = await SetupApprovedItemAsync();
+        await using var _scope = scope;
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var store = scope.ServiceProvider.GetRequiredService<IObjectStore>();
+        var packager = scope.ServiceProvider.GetRequiredService<CampaignPackager>();
+        var zipBuilder = scope.ServiceProvider.GetRequiredService<CampaignZipBuilder>();
+
+        var package = await packager.BuildAsync(campaign, default);
+        await db.SaveChangesAsync();
+
+        var zipKey = await zipBuilder.BuildOrGetAsync(campaign, package, default);
+        await db.SaveChangesAsync();
+
+        await using var zipStream = await store.GetAsync(zipKey);
+        using var buffer = new MemoryStream();
+        await zipStream.CopyToAsync(buffer);
+        buffer.Position = 0;
+
+        using var archive = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Read);
+        var entries = archive.Entries.Select(e => e.FullName).ToList();
+
+        entries.ShouldContain("plan.json");
+        entries.ShouldContain("manifest.json");
+        entries.ShouldContain("post-01/image.png");
+        entries.ShouldContain("post-01/caption.txt");
+        entries.ShouldContain("post-01/metadata.json");
+
+        var reloaded = await db.CampaignPackages.AsNoTracking().SingleAsync(p => p.CampaignId == campaign.Id);
+        reloaded.ZipKey.ShouldBe(zipKey.Value);
+    }
+
+    [DockerFact]
+    public async Task Building_the_zip_twice_reuses_the_same_object_rather_than_rebuilding()
+    {
+        var (campaign, _, scope) = await SetupApprovedItemAsync();
+        await using var _scope = scope;
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var packager = scope.ServiceProvider.GetRequiredService<CampaignPackager>();
+        var zipBuilder = scope.ServiceProvider.GetRequiredService<CampaignZipBuilder>();
+
+        var package = await packager.BuildAsync(campaign, default);
+        await db.SaveChangesAsync();
+
+        var first = await zipBuilder.BuildOrGetAsync(campaign, package, default);
+        await db.SaveChangesAsync();
+
+        // Re-load the same package row (a fresh read, as a second request would) rather than
+        // reuse the in-memory instance, so this proves the cache survives a round trip.
+        var reloaded = await db.CampaignPackages.SingleAsync(p => p.CampaignId == campaign.Id);
+        var second = await zipBuilder.BuildOrGetAsync(campaign, reloaded, default);
+
+        second.ShouldBe(first);
+    }
+
+    [DockerFact]
+    public async Task Rebuilding_the_package_clears_the_cached_zip_so_a_stale_one_is_never_served()
+    {
+        var (campaign, _, scope) = await SetupApprovedItemAsync();
+        await using var _scope = scope;
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var packager = scope.ServiceProvider.GetRequiredService<CampaignPackager>();
+        var zipBuilder = scope.ServiceProvider.GetRequiredService<CampaignZipBuilder>();
+
+        var package = await packager.BuildAsync(campaign, default);
+        await db.SaveChangesAsync();
+        await zipBuilder.BuildOrGetAsync(campaign, package, default);
+        await db.SaveChangesAsync();
+
+        package.ZipKey.ShouldNotBeNull();
+
+        var rebuilt = await packager.BuildAsync(campaign, default);
+        await db.SaveChangesAsync();
+
+        rebuilt.ZipKey.ShouldBeNull();
+    }
+
     private async Task<(ContentCampaign Campaign, ContentItem Item, AsyncServiceScope Scope)> SetupApprovedItemAsync()
     {
         var weekStart = new DateOnly(2036, 1, 7).AddDays(7 * Interlocked.Increment(ref _week));

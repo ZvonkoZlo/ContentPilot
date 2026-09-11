@@ -86,6 +86,7 @@ public static class DependencyInjection
         services.TryAddScoped<IAssetContentResolver, AssetContentResolver>();
         services.TryAddScoped<CampaignStarter>();
         services.TryAddScoped<Packaging.CampaignPackager>();
+        services.TryAddScoped<Packaging.CampaignZipBuilder>();
 
         services.AddContentPilotAi(configuration);
         services.AddContentPilotRendererClient(configuration);
