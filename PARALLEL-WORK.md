@@ -1086,3 +1086,31 @@ checks the `ContentHistoryEntry` row exists with the right topic, hook, non-zero
 and template id.
 
 386 unit, 10 architecture, 94 integration, 1 workflow test green; full build clean.
+
+### Content history's QualityScore, and a sweep for other silent write gaps (`claude`)
+
+Following up on the `ContentHistoryEntry` fix above: `ContentHistoryEntry.QualityScore` and
+`.HumanRating` both had mutator methods (`SetQualityScore`, `Rate`) that nothing ever called
+either. `QualityScore` is now set at insert time — the average of the attempt's `QaReport`
+scores, passed down from `FinishAttemptAsync` (which already holds them in memory) through
+`ApplyAsync` to `RecordContentHistoryAsync` as a new optional parameter, rather than
+re-queried: those `QualityReview` rows are only `Add()`-ed at that point in the same
+unsaved change tracker, so an `AsNoTracking()` query — which always hits the database, never
+the local tracker — would have silently returned nothing. (Caught this exactly that way:
+the first version of the fix used a fresh query and the new test assertion failed with a
+`null` score.)
+
+`.HumanRating` stays uncalled, deliberately: `ContentHistoryEntry` is append-only, so it can
+only be set once, while the row is still in the `Added` state before the first save — fine
+for `QualityScore`, known at approval time, but a real human rating always arrives later, in
+a separate request, which is exactly why the separate mutable `Domain.Packaging.HumanRating`
+table exists. Nothing to fix there; the method is vestigial by the architecture's own design,
+not a second bug.
+
+Swept the rest of the domain for the same failure mode (`grep` every `DbSet<T>` against
+`.Add(new T(` across `src/`): `ContentRevision`, `CostEntry`, `BudgetReservation`,
+`ContentPreferences`, `AudiencePersona`, `ProductFact`, `BrandAsset`, `BrandProfileVersion`,
+`PromptVersion`, `TemplateVersion` are all genuinely written somewhere in production code —
+`ContentHistoryEntry` was the one gap.
+
+386 unit, 10 architecture, 94 integration, 1 workflow test green; full build clean.

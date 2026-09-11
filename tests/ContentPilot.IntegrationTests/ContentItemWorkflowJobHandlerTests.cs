@@ -80,6 +80,10 @@ public sealed class ContentItemWorkflowJobHandlerTests(ContentPilotFixture fixtu
         history.TopicSimHash.ShouldNotBe(0);
         history.HookSimHash.ShouldNotBe(0);
         history.TemplateId.ShouldBe(Manifest.TemplateId);
+        // Every gate came back clean, so the average QualityReview score should sit at its
+        // ceiling — set once at insert, while the row is still Added, since the entry is
+        // append-only and can never be updated afterward.
+        history.QualityScore.ShouldBe(1.0);
     }
 
     [DockerFact]

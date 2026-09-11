@@ -176,14 +176,15 @@ public sealed class ContentItemWorkflowJobHandler(
         BrandSnapshot brand,
         int attempt,
         DateTimeOffset now,
-        CancellationToken ct)
+        CancellationToken ct,
+        double? qualityScore = null)
     {
         switch (decision.Kind)
         {
             case NextActionKind.Complete:
                 item.Approve();
                 run.Complete(now);
-                await RecordContentHistoryAsync(item, run, attempt, now, ct);
+                await RecordContentHistoryAsync(item, run, attempt, now, qualityScore, ct);
                 return true;
 
             case NextActionKind.NeedsHumanReview:
@@ -659,7 +660,8 @@ public sealed class ContentItemWorkflowJobHandler(
     /// context both silently see an empty history forever, no matter how many campaigns
     /// actually ran.
     /// </summary>
-    private async Task RecordContentHistoryAsync(ContentItem item, WorkflowRun run, int attempt, DateTimeOffset now, CancellationToken ct)
+    private async Task RecordContentHistoryAsync(
+        ContentItem item, WorkflowRun run, int attempt, DateTimeOffset now, double? qualityScore, CancellationToken ct)
     {
         var brandId = await db.ContentCampaigns.AsNoTracking()
             .Where(c => c.Id == item.CampaignId)
@@ -670,9 +672,22 @@ public sealed class ContentItemWorkflowJobHandler(
         var hook = copySet?.Slots.FirstOrDefault()?.Text ?? item.Topic;
         var directing = await LoadDirectingResultAsync(run.Id, ct);
 
-        db.ContentHistory.Add(new ContentHistoryEntry(
+        var entry = new ContentHistoryEntry(
             item.TenantId, brandId, item.Id, item.Type, item.Topic, item.Pillar, hook,
-            SimHash.Compute(item.Topic), SimHash.Compute(hook), directing?.TemplateId, now));
+            SimHash.Compute(item.Topic), SimHash.Compute(hook), directing?.TemplateId, now);
+
+        // Set only while the row is still Added, never after: ContentHistoryEntry is
+        // append-only, so a later attempt to update this field — a human rating the item
+        // days afterward, say — has to happen through the separate, mutable HumanRating
+        // table instead, exactly why that table exists. The score itself comes from the
+        // caller's in-memory QaReports, not a fresh query — those QualityReview rows are
+        // only Added at this point, not yet saved, so an AsNoTracking read would miss them.
+        if (qualityScore is { } score)
+        {
+            entry.SetQualityScore(score);
+        }
+
+        db.ContentHistory.Add(entry);
     }
 
     private static string ExtensionFor(string mediaType) => mediaType switch
@@ -719,8 +734,12 @@ public sealed class ContentItemWorkflowJobHandler(
 
         // Complete/Remediate/Replan/NeedsHumanReview are the only outcomes Decide can
         // return once a QaReport is supplied — never ExecuteStep — so the campaign and
-        // brand this call never touches are safely elided.
-        return await ApplyAsync(decision, item, run, default!, default!, attempt, now, ct);
+        // brand this call never touches are safely elided. The average gate score is
+        // computed from these in-memory reports, not re-queried, because the QualityReview
+        // rows above are only Added, not yet saved — an AsNoTracking query would miss them.
+        var qualityScore = reports.Count == 0 ? (double?)null : reports.Average(r => r.Score);
+
+        return await ApplyAsync(decision, item, run, default!, default!, attempt, now, ct, qualityScore);
     }
 
     private async Task<TemplateVersion> GetOrCreateTemplateVersionAsync(TemplateManifest manifest, DateTimeOffset now, CancellationToken ct)
