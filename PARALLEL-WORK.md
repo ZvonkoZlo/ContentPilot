@@ -454,3 +454,32 @@ job handler that actually runs the loop, are what remain.
 
 344 unit tests green (23 new), 10 architecture, 51 integration and the workflow smoke test
 green against real Postgres; full build clean.
+
+### Phase 5 continued — SpecAssembly, the last missing step (`claude`)
+
+`SpecAssembler` (`Application/Agents/SpecAssembler.cs`, deterministic like `TemplateSelector`
+— no model call) turns a chosen template, the copy written for it, and the brand's tokens
+into the exact `RenderImageRequest` the renderer will execute. `ToBrandTokens` maps
+`VisualIdentity` onto the renderer's `BrandTokens` — a rename, not a translation, since
+`VisualIdentity`'s own doc comment already says it is "design tokens, in the shape the
+renderer actually needs." `ComputeHash` is what `CreativeSpec.SpecHash` is meant to store:
+SHA-256 over the assembled request, with text and asset dictionaries sorted by key first so
+two logically identical specs hash identically regardless of what order the model or the
+caller produced their slots in.
+
+Image bytes are supplied already resolved as `ImagePayload` values, not fetched inside this
+class — reaching object storage is an infrastructure concern a pure, unit-tested assembler
+has no business owning. The caller is expected to resolve
+`TemplateSelector.Candidate.AssetAssignments` (asset id → `AssetView` metadata) to actual
+bytes via `IObjectStore` before calling `Assemble`; that resolution step does not exist yet
+either, and is now the smallest remaining gap between "every piece exists" and "the pipeline
+runs".
+
+**Every item-pipeline step now has a real, unit-tested executor or assembler behind it.**
+What is left is entirely the job handler that holds them: resolve asset bytes, call
+`SpecAssembler`, persist the `CreativeSpec`, call `IRendererClient`, persist the
+`ContentAsset`, run `DeterministicQaSuite`, persist the `QualityReview`, and drive all of it
+through `OrchestratorCore.Decide` inside one `IJobQueue` job type per step, in a transaction.
+
+354 unit tests green (10 new), 10 architecture, 51 integration and the workflow smoke test
+green against real Postgres; full build clean.

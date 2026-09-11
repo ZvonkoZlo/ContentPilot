@@ -36,8 +36,8 @@ tests/ContentPilot.UnitTests/Rendering/
 **Phase 4 landed** (deterministic QA) — see PARALLEL-WORK.md.
 
 **Phase 5 partially landed** — orchestrator policy, a renderer client, every domain entity
-§12 calls for around the item pipeline, and now a copywriter agent. Still not wired to a
-worker:
+§12 calls for around the item pipeline, and now every step's executor including the last
+one, SpecAssembly. Still not wired to a worker:
 
 - `Domain/Workflow/`: `WorkflowRun`, `WorkflowStep`, `BudgetReservation`. `ContentRevision`,
   `TemplateVersion`, `CreativeSpec`, `ContentAsset` in `Domain/Content/`. Migrations
@@ -48,21 +48,22 @@ worker:
 - `Application/Abstractions/IRendererClient.cs` + `Infrastructure/Rendering/
   HttpRendererClient.cs`: the typed door to the Renderer service.
 - `Application/Agents/CopywriterAgent.cs` + `CopyValidator.cs` + `CopySet.cs`: Writing's
-  executor, same `IAgent<,>` shape as `ContentStrategistAgent`. Uses the `copywriter` model
-  profile that already existed in `appsettings.json` but was never used until now.
+  executor.
+- `Application/Agents/SpecAssembler.cs`: SpecAssembly's assembler — template + `CopySet` +
+  `BrandSnapshot` → `RenderImageRequest`, plus `ComputeHash` for `CreativeSpec.SpecHash`.
+  Deterministic, no model call, same footing as `TemplateSelector`. Takes asset bytes
+  already resolved as `ImagePayload`; it does not reach object storage itself.
 
 All of it is pure or independently unit tested; none of it is called from anywhere yet.
 Full detail across PARALLEL-WORK.md's several phase 5 sections.
 
-**Every step but SpecAssembly now has a real executor**: Directing (`TemplateSelector`),
-Writing (`CopywriterAgent`), Rendering (`IRendererClient`), Validating
-(`DeterministicQaSuite` + `IRendererClient.CompareAsync`). SpecAssembly is now pure glue —
-building a `RenderImageRequest` from a `TemplateManifest`, a `CopySet` and the brand's
-tokens/assets, all of which already exist as types — with no missing dependency behind it.
+**Every item-pipeline step now has a real executor or assembler.** What remains is entirely
+the job handler that holds them together — no more missing agents, entities, or clients.
 
 **Still to do in this lane, in the order that makes sense:**
-1. SpecAssembly itself: template + `CopySet` + `BrandTokens`/`AssetView` → `RenderImageRequest`,
-   hashed and persisted as a `CreativeSpec`.
+1. Something that resolves `TemplateSelector.Candidate.AssetAssignments` (asset id →
+   metadata) to actual `ImagePayload` bytes via `IObjectStore`, for `SpecAssembler` to
+   consume. The one small piece of glue not yet written.
 2. The caller: lease a `WorkflowRun`, call `OrchestratorCore.Decide`, execute the named
    step, persist the step/transition/next-job enqueue in one transaction. The only
    remaining piece of §6's own numbered list.

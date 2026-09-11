@@ -96,7 +96,10 @@ Config shapes live in `AiOptions.cs` (`AiOptions`, `ProviderOptions`, `ModelProf
 `RecentContent`; `WeeklyPlan` / `PlannedItem` / `WeeklyPlanSchema`; `PlanValidator`;
 `CopywriterAgent` with `CopywriterInput`; `CopySet` / `CopySlot` / `CopySetSchema`;
 `CopyValidator` with `CopySlotBrief`; `TemplateSelector` (template eligibility computed from
-manifests). Execution and run persistence: `Infrastructure/Ai/AgentExecutor.cs` with
+manifests); `SpecAssembler` (template + `CopySet` + `BrandSnapshot` → `RenderImageRequest`,
+plus `ComputeHash` and the `VisualIdentity` → `BrandTokens` mapping — SpecAssembly's
+executor, deterministic like `TemplateSelector`). Execution and run persistence:
+`Infrastructure/Ai/AgentExecutor.cs` with
 `AgentContext`. Prompts: `Application/Prompts/` (`PromptLibrary`, `PromptTemplate`,
 `content-strategist.prompt.md`, `copywriter.prompt.md`), registry in
 `Infrastructure/Ai/PromptRegistry.cs`.
