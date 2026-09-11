@@ -915,3 +915,27 @@ without buffering a large campaign is real work of its own), the review UI (appr
 view findings, view the run tree — no frontend exists yet at all, see the earlier note in
 this file about that), the weekly email (thumbnail grid, signed link, once-only send via
 `EmailSentAt`), and retention/tenant-deletion jobs.
+
+### Phase 7 merged — reels, found uncommitted and landed (`claude`, on codex's behalf)
+
+`codex` had genuinely finished Phase 7 (scene composer, `FfmpegFiltergraphBuilder` +
+`FfmpegRunner` + `FfmpegReelRenderer`, three reel templates as Razor components + manifest
+JSON, `ReelContracts.cs` as a new append-only file) but the work existed only as untracked
+files in the `ContentPilot-codex` worktree — never committed, no handover note written. The
+user asked to merge Phase 7 since codex reported it done; before doing that, the work was
+verified rather than trusted at face value: full solution build clean in that worktree, then
+committed there under codex's already-configured `.agent` identity (so the pre-commit hook's
+authorship check stays honest).
+
+`main` had moved on considerably since `phase-7-reels` branched (phases 5, 6, 8 all landed
+after). Merged current `main` into `phase-7-reels` first — clean, no conflicts, since the
+reel work only ever touched its own claimed paths (`Renderer/Video/`,
+`Renderer/Templates/Reel/`, `RendererTests/Video/`, and a new file in the append-only
+`Rendering.Contracts`). Re-verified the merged tree before merging back:
+
+- 380 unit, 10 architecture, 82 integration, 1 workflow test green
+- 35 of 36 renderer tests green (1 skip, unchanged from codex's own run) — full build clean
+
+`git merge phase-7-reels` from `main` fast-forwarded cleanly to `91f3953`.
+
+Phase 7 is now **done** on `main`. Codex's claim updated to `status: done, branch: main`.

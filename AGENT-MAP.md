@@ -49,7 +49,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired into the live loop; still open: QA pass-rate metric, §27 evals, carousel continuity |
-| 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
+| 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
 | 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` (plan.json/manifest.json, per-item folders), browse/rating API done; ZIP streaming, review UI, weekly email not started |
 | 9 — Hardening, cost calibration, evals | 1342 | unclaimed |
 | 10 — Post-MVP options | 1359 | not started |

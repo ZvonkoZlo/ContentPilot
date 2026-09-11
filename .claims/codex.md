@@ -1,10 +1,10 @@
 ---
 agent: codex
 phase: 7
-branch: phase-7-reels
-status: active
+branch: main
+status: done
 migrations: false
-updated: 2026-09-09
+updated: 2026-09-11
 ---
 
 ## paths
@@ -27,5 +27,13 @@ append-only while two agents are working. Never modify an existing record or enu
 Phase 2's renderer, its 20 tests and the calibrated fidelity thresholds depend on the
 current shapes.
 
-`migrations: false` — this phase should need no schema change. If it does, write the
-entity and its configuration, then stop and note it here.
+`migrations: false` — this phase needed no schema change, as expected.
+
+**Merged into main 2026-09-11.** The reel work (scene composer, FFmpeg filtergraph pipeline,
+three reel templates, ReelContracts.cs) existed on the `phase-7-reels` branch but had never
+been committed — `claude` found it uncommitted in the `ContentPilot-codex` worktree, verified
+it (build clean, 380 unit/10 architecture/82 integration/1 workflow/35 of 36 renderer tests
+green, 1 skip unchanged from before), committed it under the codex identity already set up
+in that worktree, merged current `main` into `phase-7-reels` to bring in phases 5/6/8 (clean,
+no conflicts — the reel work only touches its own claimed paths), re-verified the merged
+tree, then fast-forward merged into `main`. See PARALLEL-WORK.md for the full note.
