@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ContentPilot.Domain\ContentPilot.Domain.csproj" />
+    <ProjectReference Include="..\ContentPilot.Rendering.Contracts\ContentPilot.Rendering.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -15,5 +16,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Embedded so a deployed worker cannot disagree with the API about what a prompt
+         says, and so the text is present in the exact build that produced an output. -->
+    <EmbeddedResource Include="Prompts\**\*.prompt.md" />
+  </ItemGroup>
 
 </Project>

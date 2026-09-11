@@ -151,6 +151,13 @@ public sealed class PingWalkingSkeletonTests : IAsyncLifetime
             ["Jobs:PollInterval"] = "00:00:00.250",
             ["Jobs:Consumers"] = "2",
             ["Jobs:LeaseDuration"] = "00:00:30",
+
+            // The dispatcher resolves every registered IJobHandler on every dispatch
+            // attempt (see JobDispatcher.ExecuteAsync), so ContentItemWorkflowJobHandler's
+            // dependency chain has to construct cleanly even in a host that only cares
+            // about the ping job. ModelProfileRegistry refuses to construct with zero
+            // profiles configured, so this is the minimum that satisfies it.
+            ["Ai:Profiles:copywriter:ModelId"] = "unused-in-this-test",
         });
 
         builder.Logging.ClearProviders();

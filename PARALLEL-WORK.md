@@ -203,8 +203,31 @@ is a deliberate departure from IMPLEMENTATION-PLAN.md §18, which proposed build
 adaptive thinking and effort, which are exactly what the agents depend on. Swapping
 providers remains one adapter.
 
-**Migrations pending.** The entities above have no migration yet. Anyone adding an entity
-before that lands: add the configuration, skip the migration, tell me.
+**Migration landed.** `ContentAndObservability` covers content_campaigns, content_items,
+content_history, agent_runs, cost_entries and prompt_versions. From here on: add your
+configuration, skip the migration, tell me.
+
+**Shared files touched.** One `DbSet` block appended in `AppDbContext`, and one line in
+`DependencyInjection` calling `AddContentPilotAi`. Both append-only, nothing reordered.
+
+**New packages.** `Anthropic` 12.46.0 and `OpenAI` 2.13.0, both in
+`ContentPilot.Infrastructure`. Note: the Anthropic release has no `Effort.XHigh` — the
+abstraction keeps the level and maps it down to `High`, the conservative direction. Remove
+the branch when the SDK carries it.
+
+**Two providers, chosen per profile.** Each vendor has its own adapter on its own official
+SDK, behind one `ILanguageModelClient`; a router dispatches on the profile's `Provider`.
+Neither vendor is routed through the other's compatibility shim. Keys are environment-only
+(`Ai__Providers__<Vendor>__ApiKey`) and `Ai:Enabled` is false by default, so nothing can
+spend until someone opts in.
+
+**Trap worth knowing.** `Directory.Build.props` sets `InvariantGlobalization=true`. Under
+it `String.Normalize` returns the string unchanged with no error, so any accent folding
+built on Unicode normalisation silently does nothing. Use an explicit table.
+
+**New reference.** `ContentPilot.Application` now references
+`ContentPilot.Rendering.Contracts` so template eligibility can be computed from manifests.
+Read-only: I have added nothing to that project and will not touch it while phase 7 is live.
 
 **Coming next in this lane.** `Infrastructure/Ai/` (client plus cost, budget, retry and
 cassette middleware), `Application/Prompts/`, `Application/Agents/`,
@@ -236,3 +259,659 @@ That enum is the load-bearing part: if findings can be free text, remediation ha
 decided by another model call, and the orchestrator loses control of the loop.
 
 The `QualityReview` entity needs a migration — coordinate.
+
+### Phase 4 — deterministic QA (landed, `claude`)
+
+`QaFindingCode` and `QaSeverity`/`QaGate`/`QaOutcome` are in `Domain/Quality/QaFinding.cs` —
+**append-only from now on**, the same rule as the rendering contracts. It is grouped by
+hundreds (1xx layout, 2xx logo, 3xx fidelity, 4xx file sanity, 5xx video — reserved for
+phase 7, 6xx visual judgement, 7xx marketing judgement) and `QaFindingCodes.GateFor` is the
+one place that knows which gate owns which code; `QualityReview` refuses to persist a
+finding filed by the wrong gate, so a vision model claiming text overflow is a thrown
+exception, not a silent possibility.
+
+**Migration landed.** `QualityReviews` adds `quality_reviews`, one row per gate per attempt,
+unique on `(ContentItemId, Attempt, Gate)`. Findings are stored as jsonb with enum names
+rather than numbers, since these rows outlive every deployment that produced them.
+
+**`DeterministicQaSuite`** (`Application/Quality/`) is gate 1: pure, exhaustive (never
+short-circuits on the first blocking defect — the remediation router wants the whole
+picture of an attempt), and it runs entirely against the renderer's existing `RenderReport`
+and `/compare` output. No image ever reaches it. `QaReport.Outcome` is derived from the
+worst finding severity, never set independently, so a report cannot claim Pass while
+carrying a Blocking finding.
+
+**Calibration harness landed** in `tests/ContentPilot.RendererTests/FidelityCalibrationTests.cs`
+— 2 templates with immutable screenshots × their aspect ratios × 5 source resolutions,
+clean + 5 injected mutations + 1 JPEG-compression control, 140 comparisons. Regenerates
+`artifacts/fidelity-calibration.md` (git-ignored, like the rest of `artifacts/`) on every
+run: distributions, separation, and why each `FidelityThresholds.Default` number is where
+it is. One real finding from widening the corpus past Phase 2's single fixture: a sigma-2
+blur on a near-1:1 source (small screenshot, mild downscale) is genuinely hard to
+distinguish from a clean render — the mutation now uses sigma 3, which is where §10's own
+reference table puts a clean failure. Worth knowing before anyone tightens the SSIM pass
+line expecting sigma-2 blurs to be caught too.
+
+**Not yet covered by the corpus**, written into the report so it travels with the numbers:
+real (non-synthetic) screenshots, logos (verified geometrically, not by comparison — a
+heavily downscaled wordmark sits in the review band even when intact, the same effect
+Phase 2 noted for poster-like art), and carousel/reel keyframes.
+
+**Coming next in this lane.** Phase 4 is otherwise done — no orchestrator, no remediation
+router; those are Phase 5. `QaFinding`/`QaGate` are the vocabulary Phase 5's remediation
+router and Phase 6's VisualQA/MarketingQA agents both consume; anyone starting Phase 6 will
+want the 6xx/7xx bands and `QaFindingCodes.GateFor` to enforce which gate can say what.
+
+### Phase 5 — orchestrator core (partial, `claude`)
+
+Landed the deterministic, unit-testable core of §6–8: the pieces that decide what happens
+next, with no job queue or worker loop wired up yet. Read this section before assuming
+"generate week" runs end to end — it does not, yet.
+
+**Entities and migration landed.** `Domain/Workflow/` gets `WorkflowRun` (the orchestrator's
+own bookkeeping — three attempt counters, step cap, wall-clock deadline, a defense-in-depth
+lease — kept apart from `ContentCampaign.Status`/`ContentItem.Status` on purpose: business
+status answers "what is this right now", a run answers "how many times have we tried and
+against what deadline"), `WorkflowStep` (append-only, the idempotency key from §6 is
+`(WorkflowRunId, StepName, Attempt)`), `BudgetReservation` (reserve-then-commit from §24).
+`ContentRevision` went into `Domain/Content/` instead, next to `ContentItem` — it is the
+attempt journal the entity diagram groups there. Migration `Workflow` landed.
+
+**One thing worth knowing:** `WorkflowRun`'s ceilings are read from `TenantLimits` at
+construction (already existed from Phase 0 with exactly the plan's defaults — 3 quality
+attempts, 40 steps, 45 minutes) rather than hard-coded. A run keeps the limits it started
+with even if the tenant's configuration changes mid-flight, which is deliberate.
+
+**`Application/Orchestration/`** (pure, no persistence — the architecture test already
+forbids `Application.Agents` from reaching it, so agents cannot decide what happens next
+even by accident):
+
+- `ItemStateMachine` — the legality of every §7 item-level transition, plus
+  `IsValidRemediationTarget`, the loop-safety rule that a restart can never target a step
+  later than the one that raised the finding.
+- `RemediationRouter` — the §8 finding-code → restart-step table (adapted to
+  `Domain.Quality.QaFindingCode`'s names, not the plan's slightly different ones — see
+  phase 4's handover for that vocabulary) plus the escalation ladder (rung 1–2 restart at
+  the mapped step, the last rung always falls back to the SafeMode template regardless of
+  which finding triggered it, past the ladder is `NeedsHumanReview`) and the two loop-safety
+  rules from §8: the same (code, target) pair twice in a row escalates a rung immediately,
+  and a target that would sit later than the source step falls back to SafeMode instead of
+  cycling. A static-constructor check fails at process start if any `QaFindingCode` has no
+  route — deliberately loud rather than a silent `NeedsHumanReview` for a code nobody wired up.
+  `RepetitiveContent` routes to `RemediationOutcome.Replan` rather than a restart step, since
+  no earlier step can fix repetition without the strategist banning the topic.
+- `BudgetGuard` — the reserve-then-commit check from §24, `CheckBoth` checking the item
+  ceiling first (the more specific, more actionable fact) then the campaign ceiling with the
+  same estimate.
+
+**Not built yet, and "generate week" cannot run unattended without it:** the actual core
+loop (lease a run, `WorkflowStateMachine`-adjacent decision, execute one step, persist and
+re-enqueue in one transaction — §6's numbered list), the `IJobQueue` job type(s) that drive
+`ContentItemWorkflow`, the campaign-level `CampaignWorkflow`, wiring `RemediationRouter`'s
+decisions to actually re-run a step (nothing yet calls `ContentStrategistAgent`,
+`DeterministicQaSuite` and the renderer client in sequence), image generation (no client
+exists), the manual trigger endpoint, and the Hangfire weekly cron. `BudgetReservation`
+rows are never written by anything yet — `BudgetGuard` is ready for a caller that does not
+exist. Whoever picks this up next should wire the loop around these three pieces rather than
+re-deriving the policy they encode.
+
+285 unit tests in the suite are green, 68 of them new to this phase;
+architecture, integration and workflow suites unaffected.
+
+### Phase 5 continued — the core loop's decision function (`claude`)
+
+`OrchestratorCore.Decide` in `Application/Orchestration/` is the `(WorkflowRun,
+WorkflowStep[]) => NextAction` function §6 names directly — the piece that turns
+`ItemStateMachine`, `RemediationRouter` and `BudgetGuard` from three separate policies into
+one decision. It is still pure: no database, no queue, no model. The guards run in order —
+deadline, step cap, budget (computed by the caller from the ledger, the one thing this
+function cannot do for itself) — then Approved short-circuits to `Complete`, then any other
+step with no QA report yet is simply `ExecuteStep(currentStep)`. The only real branching is
+after Validating has produced a `QaReport`: Pass completes the item, otherwise the worst
+finding is handed to `RemediationRouter` and its outcome is passed straight through.
+
+**Still not built:** the caller. Nothing leases a `WorkflowRun`, calls `Decide`, executes
+the named step, or persists the result in a transaction yet — that is the job handler
+described in the previous phase-5 note, and `Decide` is what it will call once it exists.
+
+### Phase 5 continued — the renderer HTTP client (`claude`)
+
+`IRendererClient` (`Application/Abstractions/IRendererClient.cs`) is the typed door to the
+Renderer service §11 calls for — the Rendering step and the Validating step's fidelity
+check now have a real way to reach it, alongside `TemplateSelector` for Directing and
+`DeterministicQaSuite` for the deterministic half of Validating. Implementation is
+`HttpRendererClient` in `Infrastructure/Rendering/`, a thin typed `HttpClient` wrapper with
+no state of its own.
+
+Two failure shapes, on purpose: `RenderSpecRejectedException` for a 400 (the renderer's own
+contract for "this spec cannot be satisfied") is permanent and routes remediation
+immediately; `RendererUnavailableException` (network failure, timeout, 5xx) is exactly what
+§8's transient-retry counter exists for. A caller-initiated cancellation is left as
+`TaskCanceledException` rather than folded into "unavailable" — an item the orchestrator
+itself cancelled should not tick the transient counter as though a provider had failed.
+Registered via `AddContentPilotRendererClient`, one line appended to the shared
+`DependencyInjection.cs`; configuration key is `Renderer:BaseUrl` / `Renderer:Timeout`.
+
+**Still missing for a real Rendering/Validating step to run end to end:** the code that
+builds a `RenderImageRequest` from a `CreativeSpec` (SpecAssembly does not exist yet), and
+the code that turns a `RenderImageResponse` plus a `CompareResult` per immutable slot into
+the `DeterministicQaInput` the QA suite already accepts — both are glue, not new policy, but
+neither is written. `TenantLimits`, `ItemStateMachine`, `RemediationRouter`, `BudgetGuard`,
+`OrchestratorCore`, `DeterministicQaSuite` and now `IRendererClient` are all the pieces the
+core loop needs; nothing yet holds them in one hand.
+
+### Phase 5 continued — the three entities the pipeline was missing (`claude`)
+
+`TemplateVersion`, `CreativeSpec` and `ContentAsset` (all `Domain/Content/`) are the last
+domain entities §12 calls for that did not exist yet. Migration `CreativePipeline` landed.
+
+`TemplateVersion` is a snapshot of one manifest fetched from the renderer via
+`IRendererClient`, keyed unique on `(TemplateId, Version)` — a spec pins this row rather
+than the live manifest, so a template redesign cannot retroactively make an old render
+inexplicable. `CreativeSpec` is the exact `RenderImageRequest` an attempt sent, serialized
+and hashed, one immutable row per `(ContentItemId, Attempt)`. `ContentAsset` is the rendered
+output — every attempt's, not only the promoted one, because promoting the best attempt on
+exhaustion only works if the earlier attempts' assets still exist to point at.
+
+With these three plus everything from the two notes above, the domain model for the item
+pipeline is complete. **What is still pure glue, not policy, and still not written:** the
+code that assembles a `CreativeSpec` from a template + brief + brand tokens (SpecAssembly),
+a copywriter agent for Writing, and the job handler that leases a `WorkflowRun`, calls
+`OrchestratorCore.Decide`, executes the named step against these entities, and persists the
+result in one transaction. Every policy and every entity the loop needs now exists; nothing
+yet holds them in one hand.
+
+### Phase 5 continued — the copywriter agent (`claude`)
+
+`CopywriterAgent` (`Application/Agents/`) is the Writing step's executor — the last agent
+the item pipeline needed. Same shape as `ContentStrategistAgent`: an `IAgent<TInput,
+TOutput>` that builds prompt variables and validates its own output, nothing else. It is
+handed a chosen template's text slots and their character budgets directly (as
+`CopySlotBrief`, language-adjusted already via `TextSlot.BudgetFor`) rather than the
+template itself — the model writes to numbers, never to layout.
+
+`CopyValidator` mirrors `PlanValidator`'s split: every rule the `copywriter.prompt.md`
+prompt states is checked here too — slot coverage (no missing slot, no unknown one, no slot
+written twice), the character budget as a hard ceiling, fact citations restricted to the
+keys the strategist's plan actually allowed for this item, and `ToneOfVoice.BannedWords`
+checked literally with a word-boundary regex (so a ban on "ass" cannot trip on "class" —
+that field's own doc comment already promised a literal, not conceptual, check).
+`CopySetSchema` is hand-written like `WeeklyPlanSchema`, for the same reason: both provider
+schemas require every property listed in `required` with `additionalProperties: false`.
+
+The `copywriter` model profile already existed in both `appsettings.json` files from
+whenever the AI layer's configuration was first laid out — this is the first agent to
+actually use it. Registered as a singleton alongside `ContentStrategistAgent` in
+`AiServiceCollectionExtensions`.
+
+**With this, every step but SpecAssembly has a real executor**: Directing
+(`TemplateSelector`), Writing (`CopywriterAgent`), Rendering (`IRendererClient`), Validating
+(`DeterministicQaSuite` + `IRendererClient.CompareAsync`). SpecAssembly — turning a chosen
+template, a `CopySet`, and the brand's tokens/assets into the `RenderImageRequest` a
+`CreativeSpec` pins — is now pure glue with no missing dependency: everything it needs
+(`TemplateManifest`, `CopySet`, `BrandTokens`, `AssetView`) already exists. That, and the
+job handler that actually runs the loop, are what remain.
+
+344 unit tests green (23 new), 10 architecture, 51 integration and the workflow smoke test
+green against real Postgres; full build clean.
+
+### Phase 5 continued — SpecAssembly, the last missing step (`claude`)
+
+`SpecAssembler` (`Application/Agents/SpecAssembler.cs`, deterministic like `TemplateSelector`
+— no model call) turns a chosen template, the copy written for it, and the brand's tokens
+into the exact `RenderImageRequest` the renderer will execute. `ToBrandTokens` maps
+`VisualIdentity` onto the renderer's `BrandTokens` — a rename, not a translation, since
+`VisualIdentity`'s own doc comment already says it is "design tokens, in the shape the
+renderer actually needs." `ComputeHash` is what `CreativeSpec.SpecHash` is meant to store:
+SHA-256 over the assembled request, with text and asset dictionaries sorted by key first so
+two logically identical specs hash identically regardless of what order the model or the
+caller produced their slots in.
+
+Image bytes are supplied already resolved as `ImagePayload` values, not fetched inside this
+class — reaching object storage is an infrastructure concern a pure, unit-tested assembler
+has no business owning. The caller is expected to resolve
+`TemplateSelector.Candidate.AssetAssignments` (asset id → `AssetView` metadata) to actual
+bytes via `IObjectStore` before calling `Assemble`; that resolution step does not exist yet
+either, and is now the smallest remaining gap between "every piece exists" and "the pipeline
+runs".
+
+**Every item-pipeline step now has a real, unit-tested executor or assembler behind it.**
+What is left is entirely the job handler that holds them: resolve asset bytes, call
+`SpecAssembler`, persist the `CreativeSpec`, call `IRendererClient`, persist the
+`ContentAsset`, run `DeterministicQaSuite`, persist the `QualityReview`, and drive all of it
+through `OrchestratorCore.Decide` inside one `IJobQueue` job type per step, in a transaction.
+
+354 unit tests green (10 new), 10 architecture, 51 integration and the workflow smoke test
+green against real Postgres; full build clean.
+
+### Phase 5 continued — resolving asset bytes for SpecAssembly (`claude`)
+
+`IAssetContentResolver` (`Application/Abstractions/`) closes the one gap `SpecAssembler`
+left open: turning `TemplateSelector.Candidate.AssetAssignments` (asset id → metadata) into
+the actual `ImagePayload` bytes it needs. `ResolveManyAsync` has a default interface
+implementation that loops `ResolveAsync` — the one method an implementation actually has to
+write — because the common case really is "resolve everything this candidate assigned" and
+there is no reason for every implementation to re-write that loop.
+
+`AssetContentResolver` (`Infrastructure/Branding/`) is the implementation: reads one
+`BrandAsset` row for its storage key and media type, streams the bytes back from
+`IObjectStore`. The tenant query filter on `AppDbContext` is what makes an asset id from
+another tenant simply not resolve — the same guarantee `BrandBrainReader` already relies on,
+verified again here with a real second tenant rather than a second call to the (idempotent)
+golden seeder. Registered in the shared `DependencyInjection.cs`.
+
+**With this, nothing about SpecAssembly is missing any more** — not the assembly logic
+(`SpecAssembler`, previous note) and not the one piece of I/O around it. Everything from
+Directing through Validating now has a real, tested path from types that exist today to a
+`RenderImageRequest` a renderer could actually execute. What is entirely left is the job
+handler: lease a `WorkflowRun`, call `OrchestratorCore.Decide`, execute the named step by
+calling the executor above that matches it, persist `CreativeSpec`/`ContentAsset`/
+`QualityReview`/`WorkflowStep` rows and the item's transition in one transaction, re-enqueue.
+
+354 unit tests unchanged, 4 new integration tests (55 total) exercising the resolver against
+real Postgres and MinIO via Testcontainers; 10 architecture and the workflow smoke test
+green; full build clean.
+
+### Phase 5: the core loop actually runs, end to end (`claude`)
+
+`ContentItemWorkflowJobHandler` (`Infrastructure/Jobs/`) is the caller §6 describes: it
+leases nothing itself (the job queue already leased the job), loads a `WorkflowRun`, calls
+`OrchestratorCore.Decide`, executes exactly the action it names, and persists the result.
+It is wired to `IJobQueue` as job type `advance-content-item-workflow`
+(`AdvanceContentItemWorkflowPayload`), registered in `AddContentPilotJobProcessing`.
+
+**This is real, not a sketch.** Two integration tests against real Postgres and MinIO prove
+it: a clean render carries a `StaticPost` item from `Pending` all the way to `Approved`,
+writing a real `CreativeSpec`, `ContentAsset` and empty-findings `QualityReview` along the
+way; and a render that always overflows converges to `NeedsHumanReview` in a bounded number
+of job invocations — the escalation ladder actually escalating, not just unit-tested in
+isolation. Only two things are faked in those tests: the model (a scripted response, same
+trick `AgentExecutorTests` already used) and the renderer (no Chromium needed to prove
+orchestration — the renderer's own fidelity math is the renderer suite's job, not this
+one's).
+
+**The one simplification worth knowing, stated rather than hidden.** Every step is pure,
+cheap, or (Writing) memoised, so one job invocation drives an item through as many steps as
+it can in a loop — Directing, Writing, SpecAssembly, AssetGeneration, Rendering, and then
+straight into Validating's decision without a second job round-trip, because the render
+report only exists in memory for that one moment and re-fetching it would mean persisting
+the whole report and every immutable slot's mask, which nothing else needs. Re-enqueuing
+happens only on a remediation restart (a fresh lease window after spending a quality
+attempt) or the 25-iteration safety cap. A crash mid-pass simply redoes the cheap steps;
+Writing's `CopySet` is memoised in its own `WorkflowStep.ResultJson` (a new column, migration
+`WorkflowStepResult`) specifically so a resumed run does not re-bill the model. Directing's
+choice is looked up as "the most recent successful Directing step for this run", not scoped
+to the current attempt, since only a remediation that specifically targets Directing should
+produce a new one — restarting at Writing or later keeps the existing template choice.
+
+**`ItemStateMachine` is now actually enforced**, not only unit-tested: a private
+`TransitionTo` helper checks `IsLegalTransition` before every `item.MoveTo`, and throws —
+per §6's own words, "an illegal transition is a bug, not a runtime condition" — rather than
+letting `ContentItem.MoveTo`'s much looser terminal-only guard wave it through.
+
+**Scope of this pass, stated plainly:**
+- Only `StaticPost` items are driven; carousels and reels immediately go to
+  `NeedsHumanReview` with a clear reason — they need their own composition logic Phase 7/8
+  will add.
+- Budget enforcement is not wired in (`WorkflowDecisionContext.Budget` is always null here);
+  nothing yet sums `CostEntry` or writes a `BudgetReservation`. §24's attempt-count and
+  step-count ceilings still apply; the cost ceilings do not yet.
+- `AssetGeneration` is a pass-through — no image generation client exists, so only
+  templates whose required assets are all user uploads can complete.
+- The `Replan` outcome (repetitive content) goes to `NeedsHumanReview` with an honest reason
+  rather than actually re-planning, since `CampaignWorkflow` does not exist yet to act on it.
+
+**Also fixed along the way:** a genuine bug this work surfaced in `PingWalkingSkeletonTests`
+— `JobDispatcher.ExecuteAsync` resolves every registered `IJobHandler` on every dispatch
+attempt (`services.GetServices<IJobHandler>()`), so once `ContentItemWorkflowJobHandler`
+joined that list, any minimal test host lacking `Ai:Profiles` configuration broke dispatch
+of every job type, not just this one — `ModelProfileRegistry`'s constructor refuses to
+build with zero profiles configured. Fixed by giving that test's host a minimal profile
+entry, since the real `appsettings.json` always has real profiles and production is
+unaffected. Worth knowing if another minimal host adds a job type with a rich dependency
+chain: the dispatcher's per-dispatch eager resolution of the whole handler set means every
+handler's constructor has to succeed in every host that runs it, whether or not that host
+will ever see that job type.
+
+**What is left for "generate week" to run unattended:** `CampaignWorkflow` (plan → fan out
+items → package) — nothing creates a `WorkflowRun` or enqueues the first
+`AdvanceContentItemWorkflowPayload` for an item yet, so this handler currently has no
+caller in the running system, only in its own tests. The manual trigger endpoint and the
+Hangfire weekly cron. Budget reservation and enforcement. Carousel and reel composition.
+Image generation.
+
+354 unit tests unchanged, 57 integration tests (2 new, plus the `PingWalkingSkeletonTests`
+fix), 10 architecture and the workflow smoke test green; full build clean.
+
+### Phase 5: the campaign half, and a manual trigger (`claude`)
+
+`CampaignWorkflowJobHandler` (`Infrastructure/Jobs/`, job type `advance-campaign-workflow`)
+is the other half of §6's caller: plans a campaign with the strategist, creates a
+`ContentItem` and its own `WorkflowRun` for every planned item, enqueues each item's first
+`AdvanceContentItemWorkflowPayload`, and — once every item has reached a terminal state —
+closes the campaign out. It never touches `ContentItemStatus`, only `ContentCampaign.Status`,
+whose own transition methods (`BeginPlanning`, `PlanAccepted`, `BeginPackaging`, `Complete`,
+`Fail`) already enforce §7's campaign-level legality — unlike `ContentItem.MoveTo`, this one
+already guarded illegal transitions before this phase touched it, so no campaign-level
+`ItemStateMachine` equivalent was needed.
+
+`POST /api/campaigns` (`Api/Endpoints/CampaignEndpoints.cs`) is the manual trigger from §21:
+freezes the brand version, creates the `Draft` campaign, enqueues the first job, all in one
+transaction. `GET /api/campaigns/{id}` and `GET /api/campaigns/{id}/items` are the read side
+a review UI needs. The weekly Hangfire cron this system will eventually have is meant to
+call the exact same trigger path — a scheduled and a manual "generate now" are never two
+code paths — but the cron itself is not built.
+
+**Six new integration tests** exercise fan-out (exact quota, one `WorkflowRun` per item),
+retry-idempotency (a second call after items already exist does not re-plan), both
+completion outcomes (`Ready` when every item is `Approved`, `PartiallyReady` when one needed
+a human — proving that outcome is a real path, not just documented), a campaign that stays
+open while items are still in flight, and a strategist whose output cannot be repaired into
+a valid plan failing the campaign with a reason rather than hanging. Four more test the HTTP
+trigger itself: success, the unique-per-week conflict, an unknown brand, and a freshly
+triggered campaign's item list. Deliberately, the item pipeline itself is not re-exercised
+here — items are promoted to their terminal status directly, since
+`ContentItemWorkflowJobHandlerTests` already proves that half.
+
+**Scope, stated plainly.** No `WorkflowRun` is created at campaign scope — the entity's own
+transition guard already does what this handler needs, and nothing here needs a
+campaign-level attempt counter or deadline yet. "Packaging" is one instantaneous transition,
+not Phase 8's real ZIP/manifest step. `Replan` (repetitive content) still has nowhere to go
+but `NeedsHumanReview`, because nothing here re-invokes the strategist for a single item.
+
+**What's left for "generate week" to run fully unattended:** the Hangfire weekly cron
+(the trigger path exists; nothing calls it on a schedule yet), budget reservation and
+enforcement, carousel and reel composition, image generation, and real packaging (Phase 8).
+A brand with a `StaticPost`-only quota, triggered through `POST /api/campaigns`, is now the
+first thing in this codebase that can go from an API call to an approved, rendered,
+QA-clean image with no further human input — everything after that call is exactly the two
+job handlers this phase built, running for real.
+
+354 unit tests unchanged, 67 integration tests (10 new), 10 architecture and the workflow
+smoke test green against real Postgres and MinIO, confirmed on repeated runs; full build
+clean.
+
+### Phase 5: §24 budget enforcement, wired for real (`claude`)
+
+`ContentItemWorkflowJobHandler` now calls `BudgetGuard.CheckBoth` before the one billable
+step this pass drives — Writing — using real sums (`CostEntry` for both item and campaign
+scope) plus live `BudgetReservation` rows, against `Tenant.Limits.MaxCostPerItemMicroCents`
+and `MaxCostPerCampaignMicroCents`. A reservation is written immediately before the
+`AgentExecutor` call and released immediately after (success or `AgentValidationException`),
+so a sibling item's own Writing step racing the same campaign ceiling sees this call's
+estimate as already-spoken-for rather than reading the same "spent so far" figure this one
+did — the exact race `BudgetReservation` exists to close. The estimate itself
+(`EstimateWritingCostMicroCents`) is a worst case, not a forecast: the copywriter's
+configured `MaxOutputTokens` plus a conservative input-token guess, priced through
+`ModelProfile.PriceOf` — reserving a typical case rather than the worst one would leave the
+budget it claims to protect unprotected on the calls that actually run long.
+
+**One thing worth knowing that this work surfaced, not introduced:** the LLM layer already
+had its own, simpler cost enforcement from Phase 3 — `BudgetedLanguageModelClient` refuses a
+call once a campaign's summed `CostEntry` reaches a single flat `AiOptions:CampaignBudgetMicroCents`
+ceiling, with no reservation and no per-item ceiling. That decorator is still in the chain
+and still runs on every model call regardless of this work; what is new here is the §24
+per-item *and* per-campaign reserve-then-commit check specifically, sitting in the
+orchestrator's own decision path (`WorkflowDecisionContext.Budget`) rather than inside the
+model client. The two do not conflict — either one refusing is enough to stop a call — but
+they are not integrated with each other, and a future pass should decide whether the flat
+campaign cap becomes redundant with `TenantLimits.MaxCostPerCampaignMicroCents` or the two
+stay deliberately separate (a hard vendor-agnostic ceiling versus a per-tenant one).
+
+**A real test-isolation bug found and fixed along the way, worth remembering:** the new
+budget test tightened `TenantLimits` on the golden tenant to prove the refusal path, and the
+golden tenant is shared and idempotent across every test in the whole `IntegrationTests`
+collection, which runs sequentially precisely so containers are not corrupted across tests.
+A mutation left in place bled into whichever test happened to run next and broke it in a
+way that had nothing to do with what that test was checking. Fixed by restoring
+`TenantLimits.Default` at the end of the budget test; any future test that mutates a shared
+fixture's state needs to do the same.
+
+Rendering itself is still not metered or budget-checked — only Writing is, since it is the
+only billable step this pass drives. Everything else from earlier phase 5 notes (the
+Hangfire cron, carousel/reel composition, image generation, real packaging) is unchanged.
+
+354 unit tests unchanged, 68 integration tests (1 new), 10 architecture and the workflow
+smoke test green against real Postgres and MinIO, confirmed stable across three consecutive
+full runs; full build clean.
+
+### Phase 5: closing it out — best-attempt promotion, resumability proven, cancellation, the weekly trigger (`claude`)
+
+Four pieces, closing every gap §26's own test list and §5's feature list named except one
+(image generation — see below, deliberately out of scope with the reasoning stated).
+
+**Best-attempt promotion.** `ContentItemWorkflowJobHandler.PromoteBestAttemptAsync` runs
+whenever an item reaches `NeedsHumanReview`: ranks every `QualityReview` for the item by
+`Score` (ties favour the latest attempt), finds that attempt's `ContentAsset`, and calls
+`ContentItem.PromoteBestAttempt`. This was a real gap — the entity has carried
+`BestAssetId`/`PromoteBestAttempt` since Phase 0, and the design note "the best attempt so
+far is promoted rather than discarded" was true only as a comment until now. Covered by a
+new assertion in the existing always-overflows test.
+
+**Crash-resumability, proven rather than assumed.** A new integration test constructs the
+exact database state a real crash mid-render leaves — Directing and Writing's `WorkflowStep`
+rows committed, the item sitting in `SpecAssembly` — without ever calling the handler for
+either step, then resumes and asserts zero `AgentRun`/`CostEntry` rows exist afterward even
+though the item reaches `Approved`. §26 asks for exactly this scenario; the mechanism
+(idempotent `WorkflowStep` lookups) was already built, just never demonstrated.
+
+**Cancellation.** `POST /api/campaigns/{id}/cancel` calls the `ContentCampaign.Cancel`
+method that has existed since Phase 0/1 — `CampaignWorkflowJobHandler`'s existing
+`IsTerminal` check (already covering `Cancelled`) means a cancelled campaign is left alone
+the next time it is dispatched, with no new code needed there. Stated plainly: this reaches
+the campaign only. Items already fanned out into their own `WorkflowRun`s keep running to
+their own terminal state — no `ContentItemStatus.Cancelled` or `WorkflowRunState.Cancelled`
+exists, and adding either would touch every switch that already matches those enums.
+Cancelling a campaign stops it from progressing or completing further, and stops new work
+from being planned; it does not reach into work already in flight.
+
+**The weekly trigger and its reconciler**, built on §21's own explicit recommendation rather
+than one cron expression per brand timezone: "fire hourly, and for each brand ask whether it
+is currently 06:00 Monday there" plus a daily reconciler that starts a campaign for any
+active brand with none for the current week, regardless of hour — the safety net for a
+missed exact-hour window and, unchanged, the manual disaster-recovery path.
+
+- `CampaignStarter` (`Infrastructure/Campaigns/`) is §21's "single implementation" —
+  check the week isn't claimed, freeze the brand, create the row, enqueue the job — now the
+  one place all three triggers (manual, scheduled, reconciled) actually share, rather than
+  three copies of the same five lines. `POST /api/campaigns` was refactored onto it with no
+  behaviour change (same tests, still green).
+- `CampaignTriggerScanJobHandler` / `CampaignTriggerReconcileJobHandler`
+  (`Infrastructure/Jobs/`) are both self-rescheduling jobs in the same shape every other job
+  in this system already uses — no separate scheduler process, no new package. `Worker`'s
+  `Program.cs` seeds the first occurrence of each idempotently on startup (checks for an
+  existing Pending-or-Leased job of that type first), so a restart never doubles them.
+  `CampaignWeek` (`Application/Campaigns/`) is the one place "which Monday does this belong
+  to" is computed, shared by the endpoint and both jobs.
+
+**Named "Hangfire" in the plan, built on the existing job queue instead — a deliberate
+substitution, not a shortcut.** The actual requirement is the hourly-per-timezone check plus
+the daily reconciler §21 describes; nothing in that description needs Hangfire specifically,
+and reusing `IJobQueue` means no second background-processing engine, no second Postgres
+schema outside EF's own migrations, and the exact same leasing/retry/idempotency guarantees
+already proven for every other job type in this codebase. If Hangfire's dashboard or richer
+recurring-job semantics are wanted later, this is a clean seam to swap behind — the two
+handlers and `CampaignStarter` would not need to change, only what enqueues them.
+
+**A real platform gotcha found while testing this, worth knowing before debugging "why
+doesn't my local cron fire":** `Directory.Build.props` sets `InvariantGlobalization=true`
+solution-wide. On Linux (the actual deployment target — see `docker/`), IANA timezone ids
+resolve natively from `/usr/share/zoneinfo` regardless of that setting. On some Windows
+setups without ICU, `TimeZoneInfo.FindSystemTimeZoneById("Europe/Zagreb")` — exactly what
+the golden tenant's own brand uses — throws `TimeZoneNotFoundException`, which
+`CampaignTriggerScanJobHandler`/`ReconcileJobHandler` already catch per-brand and skip
+silently (one bad timezone id must not stop every other brand in the same pass). The
+practical effect: on an affected Windows dev machine, the scheduled trigger quietly never
+fires for an IANA-timezone brand, with nothing logged to say why. The new trigger tests
+sidestep this by seeding a brand with `TimeZoneId = "UTC"` — a BCL-guaranteed id everywhere
+— rather than depending on OS timezone data the test environment may not have.
+
+**What remains out of scope, by deliberate decision, not oversight:** background image
+generation with seeds and variant caps. No provider is chosen, no client exists, and
+building one is its own vertical (provider selection, prompt design for background
+generation specifically, moderation, the variant-cap and seed-reuse policy §24 names) rather
+than an extension of anything already built. Its absence is not silent: `TemplateSelector`
+already only offers a template as a candidate when every one of its required assets already
+exists as an upload, so an item simply never gets routed to a template that would need a
+generated background — the pipeline degrades to "fewer template choices," not to a stuck
+item. Carousel and reel composition remain Phase 6/7/8 concerns, as the plan's own feature
+list for this phase never mentioned them.
+
+**With this, every feature phase 5 lists is either done or a stated, reasoned exception**:
+state machines with step persistence, leasing and resumability (cancellation now included,
+narrowly scoped as above); the remediation router and escalation ladder; `BudgetGuard` with
+reserve/commit; the manual trigger and its scheduled/reconciled siblings. Image generation is
+the one open item, carried forward explicitly rather than left implicit.
+
+360 unit tests (6 new), 76 integration tests (8 new), 10 architecture and the workflow smoke
+test green against real Postgres and MinIO, confirmed stable across repeated runs; full
+build clean.
+
+### Phase 6 begins — vision support in the AI layer (`claude`)
+
+Phase 5 is done (see above). Starting Phase 6 — Visual QA and Marketing QA — per the plan's
+own recommended order (§36–37: LLM QA "added on top of a working loop", before Phase 8).
+
+First piece, foundational rather than agent-specific: `ILanguageModelClient` had no way to
+attach an image to a call at all — every agent so far has been text-only. `LlmRequest.Images`
+(a new `IReadOnlyList<LlmImageAttachment>`, empty by default) and `IAgent<,>.BuildImages`
+(a default interface member returning empty, so Directing/Writing/every existing agent needs
+no change) are the two additions. Both provider adapters now build a vision-capable message
+turn when images are present — images first, then the instruction text, the same order on
+both vendors so a prompt reads identically regardless of which one a profile names — and a
+plain text turn otherwise, unchanged from before. `AgentExecutor` computes
+`agent.BuildImages(input)` once per call and threads it through.
+
+360 unit, 10 architecture, 76 integration and the workflow smoke test still green — this
+step changes the contract but nothing yet uses the new capability.
+
+### Phase 6 core — VisualQaAgent and MarketingQaAgent, wired into the live loop (`claude`)
+
+Both judgement gates now exist and run. `VisualQaAgent` (gate 2, `Domain.Quality.QaGate.Visual`,
+6xx codes) looks at the full render plus a 150px thumbnail (`Infrastructure.Quality.ImageThumbnailer`,
+Magick.NET) and judges composition, artefacts, on-brand-ness, thumbnail legibility, subject
+cropping — explicitly told in its prompt not to re-check anything the deterministic gate already
+measures. `MarketingQaAgent` (gate 3, 7xx codes) is text-only and judges the copy; its stated
+"most important job" is claim-grounding — checking that a citation's claim actually matches what
+the cited `ProductFact` says, the one thing `CopyValidator` cannot verify at Writing time because
+it only knows the citation key exists. Both follow the established agent shape: prompt + hand-written
+JSON schema + validator that rejects an unknown code, a code from the wrong gate band
+(`QaFindingCodes.BelongsTo`), an out-of-range confidence, or a blank detail.
+
+Wired into `ContentItemWorkflowJobHandler.ExecuteRenderingAsync`: gate 1 (deterministic) runs
+first as before; gates 2 and 3 now run afterwards, but **only if gate 1 didn't already fail** —
+paying for a model judgement on a render already known bad would be pure cost with no
+information gain. `FinishAttemptAsync` was rewritten to accept `IReadOnlyList<QaReport>` instead
+of one, writing one `QualityReview` row per gate that actually ran.
+
+**Gotcha worth flagging for anyone touching this handler**: the first attempt at running gates 2
+and 3 used `Task.WhenAll` since neither reads the other's output. It threw
+`InvalidOperationException: A second operation was started on this context instance` —
+`AppDbContext` is not safe for concurrent async use from one instance, and both gates go through
+`AgentExecutor.RunAsync`, which writes to the same injected `db`. Fixed by running them
+sequentially, matching every other job handler's single-DbContext-per-invocation shape. True
+concurrency would need separate DbContext scopes per gate — a reasonable follow-up if judgement
+latency ever matters, not a correctness requirement now.
+
+**§9's confidence rule** is implemented as `RemediationRouter.MinConfidenceForRemediation = 0.6`
+plus a filter in `PrimaryFinding`: a deterministic finding has no `Confidence` (always null) and
+is always eligible; a model finding below 0.6 is still persisted in full on its `QualityReview`
+row (nothing is silently dropped) but excluded from what `OrchestratorCore.Decide` sees, so a
+vision model's occasional low-conviction guess can't drive a remediation restart on its own.
+
+Two test-fixture bugs found and fixed along the way: the integration suite's fake render image
+was `new byte[24_000]` of zeros — fine for a byte-count check, but `ImageThumbnailer` crashes on
+non-decodable bytes (`MagickMissingDelegateErrorException`) once something actually opens them.
+Replaced with a real decodable image (`MagickImage` + `AddNoise(NoiseType.Random)`); the first
+attempt used PNG, whose lossless compression made random noise balloon to 8.8MB and trip the
+deterministic gate's own `MaxPlausibleBytes` ceiling — switched to JPEG at Quality=85.
+
+Existing integration tests updated for the new 3-gate reality: the clean-render test now expects
+three `QualityReview` rows (one per gate) instead of one; the crash-resume test now asserts the
+resumed pass produces exactly `["visual-qa", "marketing-qa"]` `AgentRun`s (proving Writing was
+correctly skipped on resume, while the two new gates are legitimately fresh work every pass).
+
+New unit coverage: `VisualQaAgentTests`, `MarketingQaAgentTests` (prompt/variable satisfaction,
+profile names, image ordering for VisualQA, `BuildImages` empty-by-default confirmed for the
+text-only MarketingQA agent via the `IAgent<,>` interface reference — the default interface
+member isn't visible through the concrete class type), and new `RemediationRouterTests` cases
+for the confidence threshold (below cutoff excluded, at cutoff included, deterministic findings
+unaffected, a confident lesser finding beats an unconfident worse one).
+
+380 unit tests, 10 architecture tests green (full solution build clean, 0 warnings). Integration
+and workflow suites were not re-run to completion this pass — this dev machine's Docker Desktop
+negotiates client API 1.44 against an engine that only serves 1.43, so Testcontainers refuses to
+start; this is a local Docker Desktop version mismatch, unrelated to any code change here, and
+was not present earlier in this same session. Anyone continuing this work on a machine with a
+matching Docker Desktop version should re-run
+`dotnet test tests/ContentPilot.WorkflowTests tests/ContentPilot.IntegrationTests` before trusting
+the integration-level assertions described above.
+
+**Still open for phase 6**: the QA pass-rate metric (§9: >60% first-attempt pass), §27's eval
+scenarios (need golden fixture images that don't exist yet), carousel continuity checks (moot
+until Phase 5 drives carousels — it currently only drives `StaticPost`).
+
+### Phase 8 begins — CampaignPackager: plan.json, manifest.json, per-item layout (`claude`)
+
+Phase 6's core is done (see above). Starting Phase 8 — packaging, delivery, human review —
+since Phase 7 (reels) is `codex`'s and unclaimed phases 9/10 depend on more of a real product
+existing first. This pass covers the packaging step itself and the browse/rating API; the
+ZIP, the review UI and the weekly email are separate, later verticals (see below).
+
+**Migration `CampaignPackaging`** (approved by the user before running — `dotnet ef
+migrations add` is a real DB operation, not something to run silently): two new tables,
+`campaign_packages` (`CampaignPackage` — one row per campaign, `ManifestJson`, `ZipKey?`,
+`BuiltAt`, `EmailSentAt?`, rebuilt in place rather than append-only, since re-approving an
+item after the fact should update the same package, not accumulate historical ones) and
+`human_ratings` (`HumanRating` — one row per item, unique on `ContentItemId`; a second
+rating replaces the first).
+
+**A real gap found and fixed before packaging could even start**: `ContentAsset.StorageKey`
+held a literal `"pending/{itemId}/{attempt}"` placeholder — nothing had ever actually
+uploaded the rendered bytes to object storage; `response.Image` only ever lived in memory
+for the duration of one job invocation. `ContentItemWorkflowJobHandler` now takes `IObjectStore`
+and uploads every rendered attempt to `runs/{itemId}/attempts/{attempt}/{sha256}.ext`
+(content-addressed, so a re-render of an already-uploaded attempt after a crash costs
+nothing) before recording the `ContentAsset` row with the real key. Without this, Phase 8
+had nothing to copy into a campaign's package.
+
+**`CampaignPackager`** (`Infrastructure/Packaging/CampaignPackager.cs`) builds
+`campaigns/{campaignId}/plan.json`, `manifest.json`, and one folder per item
+(`post-01/image.png` + `caption.txt` + `metadata.json`, `reel-` prefix for
+`ContentItemType.Reel`) per §12/§13's own layout. Resolves the winning attempt as
+`item.BestAssetId` when set (the human-review promotion path), else the highest-numbered
+`Image` attempt (true for a normally approved item, whose last attempt is definitionally
+the good one). Caption text comes from the Writing step's `CopySet`, read off
+`WorkflowStep.ResultJson` the same way the item handler's own `LoadCopySetAsync` does. An
+item that never rendered anything (no eligible template, sent straight to human review) is
+still listed in `plan.json` with `folder: null` — packaging never silently drops an item.
+Idempotent: calling it twice upserts the one `CampaignPackage` row rather than duplicating
+it, and re-running after an item is approved late naturally picks up the new asset.
+
+**Gotcha**: streaming a downloaded object straight back into another `PutAsync` call threw
+`Could not determine content length` — the S3 SDK needs to know the stream length up front
+to sign the PUT, and the store's read-side stream doesn't always expose one. Fixed by
+buffering into a `MemoryStream` before the re-upload (`ReadAllBytesAsync`), same as every
+other upload in this codebase already does.
+
+Wired into `CampaignWorkflowJobHandler.CheckCompletionAsync`: `BeginPackaging()` still
+transitions the campaign's own state machine as before, but now genuinely calls
+`packager.BuildAsync(campaign, ct)` in between, rather than the old placeholder comment.
+
+**Browse/rating API**, appended to `CampaignEndpoints.cs`: `GET /api/campaigns/{id}/package`
+(the manifest, 404 until packaged — the download itself goes through object storage
+directly, this is the index) and `POST /api/campaigns/{id}/items/{itemId}/rating` (the 1–5
+"would I publish this", upsert semantics, 404 if the item isn't in that campaign).
+
+**Docker Desktop note for whoever runs these suites next**: this dev machine's Docker
+Desktop serves engine API 1.43 while Testcontainers' client negotiates 1.44 by default —
+`DOCKER_API_VERSION=1.43 dotnet test ...` fixes it without touching Docker Desktop itself.
+Confirmed working this pass: 380 unit, 10 architecture, 82 integration (6 new — 3
+`CampaignPackagerTests`, 3 appended to `ApiEndpointTests`), 1 workflow smoke test, all
+green; full build clean, 0 warnings.
+
+**Still open for Phase 8**: the ZIP itself (`CampaignPackage.ZipKey` stays null — streaming
+without buffering a large campaign is real work of its own), the review UI (approve/reject,
+view findings, view the run tree — no frontend exists yet at all, see the earlier note in
+this file about that), the weekly email (thumbnail grid, signed link, once-only send via
+`EmailSentAt`), and retention/tenant-deletion jobs.

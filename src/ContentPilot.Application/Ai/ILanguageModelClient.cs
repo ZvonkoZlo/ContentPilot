@@ -54,6 +54,24 @@ public sealed record LlmRequest
     public bool CacheSystemPrompt { get; init; } = true;
 
     public int? MaxOutputTokens { get; init; }
+
+    /// <summary>
+    /// Attached to the user turn, in order, before the text. Empty for every text-only
+    /// agent — only a vision-capable one (VisualQA) ever populates this.
+    /// </summary>
+    public IReadOnlyList<LlmImageAttachment> Images { get; init; } = [];
+}
+
+/// <summary>
+/// One image attached to a call. Deliberately not <c>Rendering.Contracts.ImagePayload</c> —
+/// this is a wire shape for a model turn, not a render artifact, and the two should be free
+/// to diverge even though today they carry the same two fields.
+/// </summary>
+public sealed record LlmImageAttachment
+{
+    public required string MediaType { get; init; }
+
+    public required string Base64Data { get; init; }
 }
 
 public sealed record LlmResponse

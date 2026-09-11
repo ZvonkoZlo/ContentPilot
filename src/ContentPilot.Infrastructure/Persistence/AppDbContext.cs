@@ -2,6 +2,10 @@ using System.Linq.Expressions;
 using System.Reflection;
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Domain.Branding;
+using ContentPilot.Domain.Content;
+using ContentPilot.Domain.Observability;
+using ContentPilot.Domain.Quality;
+using ContentPilot.Domain.Workflow;
 using ContentPilot.Domain.Common;
 using ContentPilot.Domain.Tenancy;
 using ContentPilot.Infrastructure.Jobs;
@@ -32,7 +36,41 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
     /// <summary>Shared reference data, not tenant-owned: onboarding seed material.</summary>
     public DbSet<IndustryProfile> IndustryProfiles => Set<IndustryProfile>();
 
+    public DbSet<ContentCampaign> ContentCampaigns => Set<ContentCampaign>();
+
+    public DbSet<ContentItem> ContentItems => Set<ContentItem>();
+
+    public DbSet<ContentHistoryEntry> ContentHistory => Set<ContentHistoryEntry>();
+
+    public DbSet<TemplateVersion> TemplateVersions => Set<TemplateVersion>();
+
+    public DbSet<CreativeSpec> CreativeSpecs => Set<CreativeSpec>();
+
+    public DbSet<ContentAsset> ContentAssets => Set<ContentAsset>();
+
+    public DbSet<AgentRun> AgentRuns => Set<AgentRun>();
+
+    public DbSet<CostEntry> CostEntries => Set<CostEntry>();
+
+    /// <summary>Immutable prompt text, shared across tenants and referenced by every run.</summary>
+    public DbSet<PromptVersion> PromptVersions => Set<PromptVersion>();
+
     public DbSet<Job> Jobs => Set<Job>();
+
+    /// <summary>One row per QA gate per attempt, deterministic gates included.</summary>
+    public DbSet<QualityReview> QualityReviews => Set<QualityReview>();
+
+    public DbSet<WorkflowRun> WorkflowRuns => Set<WorkflowRun>();
+
+    public DbSet<WorkflowStep> WorkflowSteps => Set<WorkflowStep>();
+
+    public DbSet<ContentRevision> ContentRevisions => Set<ContentRevision>();
+
+    public DbSet<BudgetReservation> BudgetReservations => Set<BudgetReservation>();
+
+    public DbSet<Domain.Packaging.CampaignPackage> CampaignPackages => Set<Domain.Packaging.CampaignPackage>();
+
+    public DbSet<Domain.Packaging.HumanRating> HumanRatings => Set<Domain.Packaging.HumanRating>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -1,8 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using ContentPilot.Application.Abstractions;
+using ContentPilot.Domain.Content;
+using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.IntegrationTests.Infrastructure;
 using ContentPilot.TestSupport;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -197,6 +202,155 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
         (await stranger.GetAsync($"/api/brands/{_brandId}/profile")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await stranger.GetAsync($"/api/brands/{_brandId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
+
+    [DockerFact]
+    public async Task Triggering_a_campaign_enqueues_it_and_returns_its_id()
+    {
+        var response = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted, await response.Content.ReadAsStringAsync());
+        var campaign = await response.Content.ReadFromJsonAsync<CampaignDto>();
+
+        campaign!.Status.ShouldBe("Draft");
+        campaign.BrandId.ShouldBe(_brandId);
+
+        var read = await _client.GetAsync($"/api/campaigns/{campaign.Id}");
+        read.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [DockerFact]
+    public async Task A_second_trigger_for_the_same_week_is_a_conflict_not_a_duplicate()
+    {
+        var weekStart = new DateOnly(2032, 3, 1);
+
+        var first = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart });
+        first.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+
+        var second = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart });
+
+        second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+    }
+
+    [DockerFact]
+    public async Task Triggering_a_campaign_for_an_unknown_brand_is_not_found()
+    {
+        var response = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = Guid.NewGuid() });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [DockerFact]
+    public async Task A_freshly_triggered_campaign_has_no_items_yet()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 8) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var items = await _client.GetAsync($"/api/campaigns/{campaign!.Id}/items");
+
+        items.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await items.Content.ReadFromJsonAsync<List<ItemDto>>()).ShouldBeEmpty();
+    }
+
+    [DockerFact]
+    public async Task Cancelling_a_draft_campaign_takes_it_out_of_play()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 15) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var cancel = await _client.PostAsync($"/api/campaigns/{campaign!.Id}/cancel", null);
+
+        cancel.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var cancelled = await cancel.Content.ReadFromJsonAsync<CampaignDto>();
+        cancelled!.Status.ShouldBe("Cancelled");
+    }
+
+    [DockerFact]
+    public async Task Cancelling_an_already_finished_campaign_is_a_harmless_no_op()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 22) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var first = await _client.PostAsync($"/api/campaigns/{campaign!.Id}/cancel", null);
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var second = await _client.PostAsync($"/api/campaigns/{campaign.Id}/cancel", null);
+
+        second.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await second.Content.ReadFromJsonAsync<CampaignDto>())!.Status.ShouldBe("Cancelled");
+    }
+
+    [DockerFact]
+    public async Task A_campaign_that_has_not_been_packaged_yet_has_no_package()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 29) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var package = await _client.GetAsync($"/api/campaigns/{campaign!.Id}/package");
+
+        package.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [DockerFact]
+    public async Task Rating_an_item_round_trips_and_a_second_rating_replaces_the_first()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 5) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaign!.Id, ContentItemType.StaticPost, "Rate me", "problem-solution", "n/a", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var first = await _client.PostAsJsonAsync(
+            $"/api/campaigns/{campaign.Id}/items/{item.Id}/rating", new { score = 4, note = "Good enough to ship" });
+
+        first.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var firstRating = await first.Content.ReadFromJsonAsync<RatingDto>();
+        firstRating!.Score.ShouldBe(4);
+
+        var second = await _client.PostAsJsonAsync(
+            $"/api/campaigns/{campaign.Id}/items/{item.Id}/rating", new { score = 5, note = (string?)null });
+
+        second.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var secondRating = await second.Content.ReadFromJsonAsync<RatingDto>();
+        secondRating!.ContentItemId.ShouldBe(firstRating.ContentItemId);
+        secondRating.Score.ShouldBe(5);
+
+        (await db.HumanRatings.CountAsync(r => r.ContentItemId == item.Id)).ShouldBe(1);
+    }
+
+    [DockerFact]
+    public async Task Rating_an_item_from_the_wrong_campaign_is_not_found()
+    {
+        var first = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 12) });
+        var second = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 4, 19) });
+        var campaignA = await first.Content.ReadFromJsonAsync<CampaignDto>();
+        var campaignB = await second.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaignA!.Id, ContentItemType.StaticPost, "Belongs to A", "problem-solution", "n/a", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var response = await _client.PostAsJsonAsync(
+            $"/api/campaigns/{campaignB!.Id}/items/{item.Id}/rating", new { score = 3, note = (string?)null });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    private sealed record CampaignDto(Guid Id, Guid BrandId, string Status);
+
+    private sealed record ItemDto(Guid Id, string Topic);
+
+    private sealed record RatingDto(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
 
     private sealed record TenantDto(Guid Id);
 

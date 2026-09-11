@@ -2,11 +2,14 @@ using Amazon.Runtime;
 using Amazon.S3;
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Application.Capabilities;
+using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Assets;
 using ContentPilot.Infrastructure.Branding;
+using ContentPilot.Infrastructure.Campaigns;
 using ContentPilot.Application.Jobs;
 using ContentPilot.Infrastructure.Jobs;
 using ContentPilot.Infrastructure.Persistence;
+using ContentPilot.Infrastructure.Rendering;
 using ContentPilot.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -80,6 +83,12 @@ public static class DependencyInjection
         services.TryAddScoped<IBrandBrainReader, BrandBrainReader>();
         services.TryAddScoped<AssetLibrary>();
         services.TryAddScoped<GoldenTenantSeeder>();
+        services.TryAddScoped<IAssetContentResolver, AssetContentResolver>();
+        services.TryAddScoped<CampaignStarter>();
+        services.TryAddScoped<Packaging.CampaignPackager>();
+
+        services.AddContentPilotAi(configuration);
+        services.AddContentPilotRendererClient(configuration);
 
         return services;
     }
@@ -117,6 +126,10 @@ public static class DependencyInjection
     public static IServiceCollection AddContentPilotJobProcessing(this IServiceCollection services)
     {
         services.AddScoped<IJobHandler, PingJobHandler>();
+        services.AddScoped<IJobHandler, ContentItemWorkflowJobHandler>();
+        services.AddScoped<IJobHandler, CampaignWorkflowJobHandler>();
+        services.AddScoped<IJobHandler, CampaignTriggerScanJobHandler>();
+        services.AddScoped<IJobHandler, CampaignTriggerReconcileJobHandler>();
 
         services.AddHostedService<JobDispatcher>();
         services.AddHostedService<JobReaper>();
