@@ -137,7 +137,10 @@ a job — see PARALLEL-WORK.md's phase 5 sections for what is still missing.
 **Brand Brain** — `Application/Brand/` (`BrandBrainAssembler`, `BrandSnapshot` and its views,
 `BrandBlockRenderer`); port `Application/Capabilities/IBrandBrainReader.cs`; implementation
 `Infrastructure/Branding/BrandBrainReader.cs`; seed `GoldenTenantSeeder.cs`; assets
-`AssetLibrary.cs` and `Infrastructure/Assets/` (`ImageIngestor`, `SvgSanitizer`).
+`AssetLibrary.cs` and `Infrastructure/Assets/` (`ImageIngestor`, `SvgSanitizer`). Asset
+*bytes* for the render pipeline (as opposed to the metadata `BrandSnapshot` carries): port
+`Application/Abstractions/IAssetContentResolver.cs`, implementation
+`Infrastructure/Branding/AssetContentResolver.cs`.
 
 **Entities** — `Domain/Tenancy/` (`Tenant`, `TenantLimits` — every attempt/cost/deadline
 ceiling in the system, tuned per tenant, never hard-coded); `Domain/Branding/` (`Brand`,

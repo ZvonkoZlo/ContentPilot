@@ -82,6 +82,7 @@ public static class DependencyInjection
         services.TryAddScoped<IBrandBrainReader, BrandBrainReader>();
         services.TryAddScoped<AssetLibrary>();
         services.TryAddScoped<GoldenTenantSeeder>();
+        services.TryAddScoped<IAssetContentResolver, AssetContentResolver>();
 
         services.AddContentPilotAi(configuration);
         services.AddContentPilotRendererClient(configuration);

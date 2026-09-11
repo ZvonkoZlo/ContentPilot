@@ -483,3 +483,31 @@ through `OrchestratorCore.Decide` inside one `IJobQueue` job type per step, in a
 
 354 unit tests green (10 new), 10 architecture, 51 integration and the workflow smoke test
 green against real Postgres; full build clean.
+
+### Phase 5 continued — resolving asset bytes for SpecAssembly (`claude`)
+
+`IAssetContentResolver` (`Application/Abstractions/`) closes the one gap `SpecAssembler`
+left open: turning `TemplateSelector.Candidate.AssetAssignments` (asset id → metadata) into
+the actual `ImagePayload` bytes it needs. `ResolveManyAsync` has a default interface
+implementation that loops `ResolveAsync` — the one method an implementation actually has to
+write — because the common case really is "resolve everything this candidate assigned" and
+there is no reason for every implementation to re-write that loop.
+
+`AssetContentResolver` (`Infrastructure/Branding/`) is the implementation: reads one
+`BrandAsset` row for its storage key and media type, streams the bytes back from
+`IObjectStore`. The tenant query filter on `AppDbContext` is what makes an asset id from
+another tenant simply not resolve — the same guarantee `BrandBrainReader` already relies on,
+verified again here with a real second tenant rather than a second call to the (idempotent)
+golden seeder. Registered in the shared `DependencyInjection.cs`.
+
+**With this, nothing about SpecAssembly is missing any more** — not the assembly logic
+(`SpecAssembler`, previous note) and not the one piece of I/O around it. Everything from
+Directing through Validating now has a real, tested path from types that exist today to a
+`RenderImageRequest` a renderer could actually execute. What is entirely left is the job
+handler: lease a `WorkflowRun`, call `OrchestratorCore.Decide`, execute the named step by
+calling the executor above that matches it, persist `CreativeSpec`/`ContentAsset`/
+`QualityReview`/`WorkflowStep` rows and the item's transition in one transaction, re-enqueue.
+
+354 unit tests unchanged, 4 new integration tests (55 total) exercising the resolver against
+real Postgres and MinIO via Testcontainers; 10 architecture and the workflow smoke test
+green; full build clean.
