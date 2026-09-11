@@ -1,0 +1,83 @@
+{
+  "templateId": "reel-feature-tour",
+  "version": 1,
+  "name": "Feature tour",
+  "description": "A product-led walkthrough with two real UI scenes held in immutable screenshot slots.",
+  "safeMode": false,
+  "colorSchemes": ["LightOnDark", "DarkOnLight"],
+  "safeAreas": { "top": 0.06, "bottom": 0.14, "left": 0.06, "right": 0.06 },
+  "scenes": [
+    {
+      "id": "intro",
+      "name": "Feature promise",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0.5,
+      "transition": "Fade",
+      "backgroundMotion": "PushIn",
+      "productMotion": "None",
+      "textSlots": [
+        { "id": "eyebrow", "role": "Feature category", "maxChars": 22, "maxLines": 1, "required": false },
+        { "id": "headline", "role": "Feature promise", "maxChars": 52, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 38 }
+      ],
+      "assetSlots": [
+        { "id": "logo", "kind": "Logo", "required": false, "immutable": true, "maxOcclusion": 0.0, "minWidthPx": 100, "clearSpaceRatio": 0.25 }
+      ]
+    },
+    {
+      "id": "step-one",
+      "name": "First feature",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0.5,
+      "transition": "WipeLeft",
+      "backgroundMotion": "Still",
+      "productMotion": "Rise",
+      "textSlots": [
+        { "id": "step", "role": "Step label", "maxChars": 18, "maxLines": 1, "required": true },
+        { "id": "headline", "role": "What the UI does", "maxChars": 46, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 30 }
+      ],
+      "assetSlots": [
+        { "id": "screenshot", "kind": "ProductScreenshot", "required": true, "immutable": true, "maxOcclusion": 0.02, "minWidthPx": 0, "clearSpaceRatio": 0 }
+      ]
+    },
+    {
+      "id": "step-two",
+      "name": "Second feature",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0.5,
+      "transition": "SlideUp",
+      "backgroundMotion": "Still",
+      "productMotion": "SlideLeft",
+      "textSlots": [
+        { "id": "step", "role": "Step label", "maxChars": 18, "maxLines": 1, "required": true },
+        { "id": "headline", "role": "What the UI does", "maxChars": 46, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 30 }
+      ],
+      "assetSlots": [
+        { "id": "screenshot", "kind": "ProductScreenshot", "required": true, "immutable": true, "maxOcclusion": 0.02, "minWidthPx": 0, "clearSpaceRatio": 0 }
+      ]
+    },
+    {
+      "id": "cta",
+      "name": "Call to action",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0,
+      "transition": "Fade",
+      "backgroundMotion": "PullOut",
+      "productMotion": "None",
+      "textSlots": [
+        { "id": "headline", "role": "Closing benefit", "maxChars": 48, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 38 },
+        { "id": "cta", "role": "Call to action", "maxChars": 24, "maxLines": 1, "required": true }
+      ],
+      "assetSlots": [
+        { "id": "logo", "kind": "Logo", "required": false, "immutable": true, "maxOcclusion": 0.0, "minWidthPx": 100, "clearSpaceRatio": 0.25 }
+      ]
+    }
+  ]
+}

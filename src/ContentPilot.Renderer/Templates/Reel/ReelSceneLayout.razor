@@ -1,0 +1,223 @@
+@using ContentPilot.Rendering.Contracts
+
+<div class="reel-scene design-@Design scene-@Model.Scene.Id">
+    @if (Model.IncludesBackground)
+    {
+        <div class="reel-background">
+            @foreach (var slot in Model.Scene.AssetSlots.Where(s => s.Kind == AssetKind.Background && Model.HasAsset(s.Id)))
+            {
+                <img class="reel-background-image" src="@Model.Asset(slot.Id)" alt="" data-asset-slot="@slot.Id" />
+            }
+        </div>
+        <div class="reel-orb reel-orb-one"></div>
+        <div class="reel-orb reel-orb-two"></div>
+        <div class="reel-grid"></div>
+    }
+
+    @if (Model.IncludesProduct)
+    {
+        @foreach (var slot in Model.Scene.AssetSlots.Where(s => s.Kind is AssetKind.ProductScreenshot or AssetKind.Photo && Model.HasAsset(s.Id)))
+        {
+            <div class="reel-product">
+                <div class="reel-product-chrome"><i></i><i></i><i></i></div>
+                <div class="reel-product-image" data-asset-slot="@slot.Id" data-immutable="@(slot.Immutable ? "true" : null)">
+                    <img src="@Model.Asset(slot.Id)" alt="" />
+                </div>
+            </div>
+        }
+    }
+
+    @if (Model.IncludesText)
+    {
+        <div class="reel-copy">
+            @foreach (var slot in Model.Scene.TextSlots.Where(s => Model.HasText(s.Id)))
+            {
+                @if (slot.Id is "eyebrow" or "step" or "label" or "cta")
+                {
+                    <div class="reel-text slot-@slot.Id"><span data-slot="@slot.Id">@Model.Text(slot.Id)</span></div>
+                }
+                else
+                {
+                    <div class="reel-text slot-@slot.Id" data-slot="@slot.Id">@Model.Text(slot.Id)</div>
+                }
+            }
+        </div>
+
+        @foreach (var slot in Model.Scene.AssetSlots.Where(s => s.Kind == AssetKind.Logo && Model.HasAsset(s.Id)))
+        {
+            <div class="reel-logo" data-asset-slot="@slot.Id" data-immutable="@(slot.Immutable ? "true" : null)">
+                <img src="@Model.Asset(slot.Id)" alt="" />
+            </div>
+        }
+    }
+</div>
+
+<style>
+    .reel-scene { position: absolute; inset: 0; overflow: hidden; }
+
+    .reel-background {
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(90% 58% at 92% 5%, color-mix(in srgb, var(--brand-accent) 38%, transparent), transparent 68%),
+            radial-gradient(82% 50% at 0% 82%, color-mix(in srgb, var(--brand-primary) 48%, transparent), transparent 72%),
+            linear-gradient(164deg, color-mix(in srgb, var(--brand-secondary) 48%, var(--ground)), var(--ground) 62%);
+    }
+
+    .reel-background-image { width: 100%; height: 100%; object-fit: cover; opacity: .32; }
+
+    .reel-orb { position: absolute; border-radius: 50%; filter: blur(1px); }
+    .reel-orb-one { width: 260px; height: 260px; right: -110px; top: 82px; background: color-mix(in srgb, var(--brand-accent) 22%, transparent); }
+    .reel-orb-two { width: 190px; height: 190px; left: -105px; bottom: 128px; background: color-mix(in srgb, var(--brand-primary) 28%, transparent); }
+
+    .reel-grid {
+        position: absolute;
+        inset: 0;
+        opacity: .08;
+        background-image:
+            linear-gradient(rgba(255,255,255,.35) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.35) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: linear-gradient(to bottom, transparent, #000 35%, transparent 88%);
+    }
+
+    .reel-copy {
+        position: absolute;
+        z-index: 3;
+        top: 92px;
+        left: 38px;
+        right: 38px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .reel-text { color: var(--fg); }
+
+    .slot-eyebrow, .slot-step, .slot-label {
+        display: inline-flex;
+        max-width: 100%;
+        min-height: 30px;
+        align-items: center;
+        padding: 6px 13px;
+        border: 1px solid color-mix(in srgb, var(--brand-accent) 64%, transparent);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--brand-accent) 14%, transparent);
+        color: color-mix(in srgb, var(--brand-accent) 72%, white);
+        font-size: 15px;
+        line-height: 1.25;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .slot-headline {
+        width: 100%;
+        max-height: 190px;
+        overflow: hidden;
+        font-family: var(--font-heading);
+        font-size: 48px;
+        line-height: 1.08;
+        letter-spacing: -.035em;
+        font-weight: 700;
+        text-wrap: balance;
+    }
+
+    .slot-stat {
+        width: 100%;
+        max-height: 116px;
+        overflow: hidden;
+        font-family: var(--font-heading);
+        font-size: 70px;
+        line-height: 1.05;
+        letter-spacing: -.045em;
+        font-weight: 700;
+        color: color-mix(in srgb, var(--brand-accent) 78%, white);
+    }
+
+    .slot-body {
+        width: 100%;
+        max-height: 114px;
+        overflow: hidden;
+        font-size: 27px;
+        line-height: 1.28;
+        color: var(--fg-muted);
+        text-wrap: pretty;
+    }
+
+    .slot-cta {
+        display: inline-flex;
+        min-height: 50px;
+        max-width: 100%;
+        align-items: center;
+        padding: 12px 22px;
+        border-radius: 999px;
+        background: var(--brand-primary);
+        color: white;
+        font-size: 20px;
+        line-height: 1.25;
+        font-weight: 700;
+        white-space: nowrap;
+        box-shadow: 0 14px 42px color-mix(in srgb, var(--brand-primary) 44%, transparent);
+    }
+
+    .reel-logo { position: absolute; z-index: 4; left: 38px; bottom: 142px; width: 120px; height: 38px; }
+    .reel-logo img { width: 100%; height: 100%; object-fit: contain; object-position: left center; }
+
+    .reel-product {
+        position: absolute;
+        z-index: 2;
+        left: 58px;
+        right: 58px;
+        top: 332px;
+        height: 488px;
+        overflow: hidden;
+        border: 7px solid color-mix(in srgb, var(--brand-light) 92%, transparent);
+        border-radius: 30px;
+        background: #fff;
+        box-shadow: 0 38px 88px rgba(0,0,0,.42), 0 0 0 1px rgba(255,255,255,.2);
+    }
+
+    .reel-product-chrome { height: 24px; display: flex; gap: 6px; align-items: center; padding: 0 10px; background: #f1f2f5; }
+    .reel-product-chrome i { display: block; width: 6px; height: 6px; border-radius: 50%; background: #c4c7ce; }
+    .reel-product-image { width: 100%; height: calc(100% - 24px); }
+    .reel-product-image img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center top; }
+
+    .design-feature-tour.scene-step-one .reel-copy,
+    .design-feature-tour.scene-step-two .reel-copy,
+    .design-before-after.scene-before .reel-copy,
+    .design-before-after.scene-after .reel-copy { top: 76px; }
+
+    .design-feature-tour.scene-step-one .slot-headline,
+    .design-feature-tour.scene-step-two .slot-headline,
+    .design-before-after.scene-before .slot-headline,
+    .design-before-after.scene-after .slot-headline { font-size: 37px; max-height: 86px; }
+
+    .design-before-after .reel-product { top: 292px; height: 525px; transform: rotate(-1.2deg); }
+    .design-before-after.scene-after .reel-product { transform: rotate(1.2deg); border-color: color-mix(in srgb, var(--brand-accent) 72%, white); }
+
+    .design-problem-solution.scene-problem .reel-copy { top: 276px; gap: 28px; }
+    .design-problem-solution.scene-solution .reel-copy { top: 326px; }
+    .design-problem-solution.scene-solution .slot-headline,
+    .design-problem-solution.scene-cta .slot-headline { max-height: 106px; }
+    .design-problem-solution.scene-cta .reel-copy { top: 304px; align-items: center; text-align: center; }
+    .design-problem-solution.scene-cta .slot-headline { max-width: 464px; }
+    .design-problem-solution.scene-cta .reel-logo { left: 50%; transform: translateX(-50%); }
+
+    .design-feature-tour.scene-intro .reel-copy,
+    .design-feature-tour.scene-cta .reel-copy,
+    .design-before-after.scene-result .reel-copy { top: 304px; }
+
+    .design-feature-tour.scene-cta .reel-copy,
+    .design-before-after.scene-result .reel-copy { align-items: center; text-align: center; }
+</style>
+
+@code {
+    [Parameter, EditorRequired]
+    public ReelLayerModel Model { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public string Design { get; set; } = string.Empty;
+}

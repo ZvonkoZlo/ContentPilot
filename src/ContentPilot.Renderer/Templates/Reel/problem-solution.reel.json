@@ -1,0 +1,77 @@
+{
+  "templateId": "reel-problem-solution",
+  "version": 1,
+  "name": "Problem to solution",
+  "description": "Safe-mode reel built from brand colour, strong type and a direct CTA. It remains usable when no image assets exist.",
+  "safeMode": true,
+  "colorSchemes": ["LightOnDark"],
+  "safeAreas": { "top": 0.06, "bottom": 0.14, "left": 0.06, "right": 0.06 },
+  "scenes": [
+    {
+      "id": "hook",
+      "name": "Hook",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0.5,
+      "transition": "Fade",
+      "backgroundMotion": "PushIn",
+      "productMotion": "None",
+      "textSlots": [
+        { "id": "eyebrow", "role": "Audience cue", "maxChars": 24, "maxLines": 1, "required": false },
+        { "id": "headline", "role": "Scroll-stopping problem", "maxChars": 58, "maxLines": 3, "required": true, "shrinkToFit": true, "minFontPx": 38 }
+      ],
+      "assetSlots": [
+        { "id": "logo", "kind": "Logo", "required": false, "immutable": true, "maxOcclusion": 0.0, "minWidthPx": 100, "clearSpaceRatio": 0.25 }
+      ]
+    },
+    {
+      "id": "problem",
+      "name": "Problem",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0.5,
+      "transition": "WipeLeft",
+      "backgroundMotion": "PullOut",
+      "productMotion": "None",
+      "textSlots": [
+        { "id": "stat", "role": "Concrete cost or number", "maxChars": 18, "maxLines": 1, "required": true, "shrinkToFit": true, "minFontPx": 48 },
+        { "id": "body", "role": "Why the problem matters", "maxChars": 92, "maxLines": 3, "required": true, "shrinkToFit": true, "minFontPx": 28 }
+      ]
+    },
+    {
+      "id": "solution",
+      "name": "Solution",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0.5,
+      "transition": "SlideUp",
+      "backgroundMotion": "PushIn",
+      "productMotion": "None",
+      "textSlots": [
+        { "id": "headline", "role": "Solution claim", "maxChars": 52, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 36 },
+        { "id": "body", "role": "One supporting sentence", "maxChars": 80, "maxLines": 2, "required": false }
+      ]
+    },
+    {
+      "id": "cta",
+      "name": "Call to action",
+      "defaultDurationSeconds": 4.125,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 5,
+      "transitionSeconds": 0,
+      "transition": "Fade",
+      "backgroundMotion": "Still",
+      "productMotion": "None",
+      "textSlots": [
+        { "id": "headline", "role": "Closing promise", "maxChars": 48, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 38 },
+        { "id": "cta", "role": "Call to action", "maxChars": 24, "maxLines": 1, "required": true }
+      ],
+      "assetSlots": [
+        { "id": "logo", "kind": "Logo", "required": false, "immutable": true, "maxOcclusion": 0.0, "minWidthPx": 100, "clearSpaceRatio": 0.25 }
+      ]
+    }
+  ]
+}

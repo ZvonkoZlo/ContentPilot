@@ -1,0 +1,66 @@
+{
+  "templateId": "reel-before-after",
+  "version": 1,
+  "name": "Before and after",
+  "description": "A three-scene contrast: the old workflow, the improved workflow, then the result and CTA.",
+  "safeMode": false,
+  "colorSchemes": ["LightOnDark"],
+  "safeAreas": { "top": 0.06, "bottom": 0.14, "left": 0.06, "right": 0.06 },
+  "scenes": [
+    {
+      "id": "before",
+      "name": "Before",
+      "defaultDurationSeconds": 5.333,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 6,
+      "transitionSeconds": 0.5,
+      "transition": "WipeLeft",
+      "backgroundMotion": "PullOut",
+      "productMotion": "SlideRight",
+      "textSlots": [
+        { "id": "label", "role": "Before label", "maxChars": 16, "maxLines": 1, "required": true },
+        { "id": "headline", "role": "Old painful workflow", "maxChars": 48, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 30 }
+      ],
+      "assetSlots": [
+        { "id": "screenshot", "kind": "ProductScreenshot", "required": true, "immutable": true, "maxOcclusion": 0.02, "minWidthPx": 0, "clearSpaceRatio": 0 }
+      ]
+    },
+    {
+      "id": "after",
+      "name": "After",
+      "defaultDurationSeconds": 5.334,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 6,
+      "transitionSeconds": 0.5,
+      "transition": "SlideUp",
+      "backgroundMotion": "PushIn",
+      "productMotion": "Rise",
+      "textSlots": [
+        { "id": "label", "role": "After label", "maxChars": 16, "maxLines": 1, "required": true },
+        { "id": "headline", "role": "Improved workflow", "maxChars": 48, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 30 }
+      ],
+      "assetSlots": [
+        { "id": "screenshot", "kind": "ProductScreenshot", "required": true, "immutable": true, "maxOcclusion": 0.02, "minWidthPx": 0, "clearSpaceRatio": 0 }
+      ]
+    },
+    {
+      "id": "result",
+      "name": "Result",
+      "defaultDurationSeconds": 5.333,
+      "minDurationSeconds": 3,
+      "maxDurationSeconds": 6,
+      "transitionSeconds": 0,
+      "transition": "Fade",
+      "backgroundMotion": "Still",
+      "productMotion": "None",
+      "textSlots": [
+        { "id": "stat", "role": "Outcome number", "maxChars": 18, "maxLines": 1, "required": true, "shrinkToFit": true, "minFontPx": 48 },
+        { "id": "headline", "role": "Outcome statement", "maxChars": 52, "maxLines": 2, "required": true, "shrinkToFit": true, "minFontPx": 36 },
+        { "id": "cta", "role": "Call to action", "maxChars": 24, "maxLines": 1, "required": true }
+      ],
+      "assetSlots": [
+        { "id": "logo", "kind": "Logo", "required": false, "immutable": true, "maxOcclusion": 0.0, "minWidthPx": 100, "clearSpaceRatio": 0.25 }
+      ]
+    }
+  ]
+}
