@@ -50,7 +50,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost, now also writing `ContentHistoryEntry` on approval (§14); only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired in; QA pass-rate metric (`QaPassRateCalculator`) done; still open: §27 evals, carousel continuity |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
-| 8 — Packaging, delivery, human review | 1322 | in progress (`claude`) — `CampaignPackager` + `CampaignZipBuilder`, browse/rating/download API, `RetentionJobHandler` all done; review UI (no frontend exists yet) and weekly email not started |
+| 8 — Packaging, delivery, human review | 1322 | backend done (`claude`) — packaging, ZIP, browse/download/approve/reject/rating/findings/run-tree/cost/retention all built; only the weekly email and the review UI itself (no frontend exists anywhere) remain |
 | 9 — Hardening, cost calibration, evals | 1342 | in progress (`claude`) — admin views (dead jobs, stuck runs) done; dashboard, calibration, evals need real data/spend this session can't produce |
 | 10 — Post-MVP options | 1359 | not started |
 
@@ -179,7 +179,8 @@ same self-rescheduling shape, daily, enforcing §11's per-tenant retention windo
 Quality/Packaging note above and PARALLEL-WORK.md for why it never touches a row, only
 object-storage bytes. `Worker/Program.cs` seeds the first occurrence of each of these three
 idempotently on startup. `Api/Endpoints/CampaignEndpoints.cs` — `POST /api/campaigns`,
-`GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items`, `POST
+`GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items`, `GET
+/api/campaigns/{id}/items/{itemId}`, `POST
 /api/campaigns/{id}/cancel`, `GET /api/campaigns/{id}/package`, `POST
 /api/campaigns/{id}/items/{itemId}/rating`, `GET /api/campaigns/{id}/cost`, `POST
 /api/campaigns/{id}/items/{itemId}/approve`, `POST
@@ -187,8 +188,10 @@ idempotently on startup. `Api/Endpoints/CampaignEndpoints.cs` — `POST /api/cam
 trigger from §21, its read side, cancellation (campaign-level only; items already in flight
 are not reached), the package index, the 1–5 human rating, §23's "what did this campaign
 cost" (total + per-agent breakdown + budget remaining, from the same `CostEntry` ledger
-`BudgetGuard` reads), and the human-review resolution (approve/reject) a `NeedsHumanReview`
-item was otherwise stuck without. `Infrastructure/Content/ContentHistoryRecorder.cs` is the
+`BudgetGuard` reads), the human-review resolution (approve/reject) a `NeedsHumanReview`
+item was otherwise stuck without, and one item's full explainability view — every QA
+finding, the workflow step history, and every `AgentRun` with its cost (§23's "the run tree
+is a genuine feature"). `Infrastructure/Content/ContentHistoryRecorder.cs` is the
 §14 write shared between a clean auto-approval (`ContentItemWorkflowJobHandler`) and the
 approve endpoint. Proven end to
 end against real Postgres/MinIO in `ContentItemWorkflowJobHandlerTests.cs`,

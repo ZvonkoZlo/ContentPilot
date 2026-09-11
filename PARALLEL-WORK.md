@@ -1199,3 +1199,27 @@ directly — so the recorder takes the score as a parameter rather than computin
 letting both callers stay correct for their own situation.
 
 386 unit, 10 architecture, 100 integration (3 new), 1 workflow test green; full build clean.
+
+### §23's "the run tree is a genuine feature": item detail endpoint (`claude`)
+
+`GET /api/campaigns/{id}/items/{itemId}` — the other missing half of the review UI's backend
+needs (Phase 8's own list: "approve, reject, view findings, view the run tree, and the 1–5
+rating"). Returns the item plus:
+
+- **Reviews**: every `QualityReview` across every gate and attempt, findings included
+  (code/severity/slot/detail/measured/threshold/confidence) — "view findings".
+- **Steps**: the item's `WorkflowRun`'s `WorkflowStep`s in order — "view the run tree".
+- **AgentRuns**: every model call against the item, with cost and duration — what a run tree
+  is for in the first place: explaining what happened and what it cost, not just that it did.
+
+Same materialize-then-map pattern as the cost endpoint's fix: `QualityReview.Findings` is an
+owned collection, and projecting straight into a record inside `Select` risks the same EF
+translation failure found there, so reviews/steps/agent-runs are all `ToListAsync()`'d as
+entities first and mapped to response records client-side afterward.
+
+386 unit, 10 architecture, 102 integration (2 new), 1 workflow test green; full build clean.
+
+**With this, Phase 8's backend is now complete against its own stated feature list** —
+packaging, ZIP, browse/download, rating, approve/reject, findings, run tree, QA pass-rate,
+cost, retention. The only Phase 8 item left is the weekly email (needs a provider decision),
+and the review UI itself has no frontend to render any of this yet.

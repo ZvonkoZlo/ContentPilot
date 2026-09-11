@@ -80,6 +80,59 @@ public static class CampaignEndpoints
         })
         .WithSummary("Lists one campaign's items and their current status — the review UI's main query.");
 
+        group.MapGet("/{id:guid}/items/{itemId:guid}", async (Guid id, Guid itemId, AppDbContext db, CancellationToken ct) =>
+        {
+            var item = await db.ContentItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId && i.CampaignId == id, ct);
+
+            if (item is null)
+            {
+                return Results.NotFound(new { detail = $"No item '{itemId}' in campaign '{id}'." });
+            }
+
+            var reviewEntities = await db.QualityReviews.AsNoTracking()
+                .Where(q => q.ContentItemId == itemId)
+                .OrderBy(q => q.Attempt).ThenBy(q => q.Gate)
+                .ToListAsync(ct);
+
+            var reviews = reviewEntities.Select(q => new ItemFindingsResponse(
+                q.Attempt, q.Gate.ToString(), q.Outcome.ToString(), q.Score, q.EvaluatedAt,
+                q.Findings.Select(f => new ItemFindingResponse(
+                    f.Code.ToString(), f.Severity.ToString(), f.SlotId, f.Detail, f.Measured, f.Threshold, f.Confidence)).ToList()))
+                .ToList();
+
+            var run = await db.WorkflowRuns.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.Scope == WorkflowScope.Item && r.EntityId == itemId, ct);
+
+            var stepEntities = run is null
+                ? []
+                : await db.WorkflowSteps.AsNoTracking()
+                    .Where(s => s.WorkflowRunId == run.Id)
+                    .OrderBy(s => s.StartedAt)
+                    .ToListAsync(ct);
+
+            var steps = stepEntities
+                .Select(s => new ItemStepResponse(s.StepName, s.Attempt, s.Outcome.ToString(), s.StartedAt, s.CompletedAt, s.Error))
+                .ToList();
+
+            var agentRunEntities = await db.AgentRuns.AsNoTracking()
+                .Where(r => r.ContentItemId == itemId)
+                .OrderBy(r => r.StartedAt)
+                .ToListAsync(ct);
+
+            var agentRuns = agentRunEntities
+                .Select(r => new ItemAgentRunResponse(r.AgentName, r.Attempt, r.ModelId, r.Outcome.ToString(), r.CostMicroCents, r.DurationMs, r.StartedAt))
+                .ToList();
+
+            return Results.Ok(new ItemDetailResponse(
+                item.Id, item.Ordinal, item.Type.ToString(), item.Topic, item.Pillar, item.Objective,
+                item.PublishDay.ToString(), item.Status.ToString(), item.QualityAttempts, item.FailureReason,
+                reviews, steps, agentRuns));
+        })
+        .WithSummary(
+            "One item's full explainability view: its QA findings across every gate and " +
+            "attempt, its workflow step history, and every model call that ran against it — " +
+            "§23's \"the run tree is a genuine feature, not just an internal tool.\"");
+
         group.MapPost("/{id:guid}/cancel", async (Guid id, AppDbContext db, IUnitOfWork uow, IClock clock, CancellationToken ct) =>
         {
             var campaign = await db.ContentCampaigns.FirstOrDefaultAsync(c => c.Id == id, ct);
@@ -371,6 +424,29 @@ public sealed record ContentItemResponse(
     string? FailureReason);
 
 public sealed record CampaignPackageResponse(Guid CampaignId, DateTimeOffset BuiltAt, DateTimeOffset? EmailSentAt, string ManifestJson);
+
+public sealed record ItemDetailResponse(
+    Guid Id,
+    int Ordinal,
+    string Type,
+    string Topic,
+    string Pillar,
+    string Objective,
+    string PublishDay,
+    string Status,
+    int QualityAttempts,
+    string? FailureReason,
+    IReadOnlyList<ItemFindingsResponse> Reviews,
+    IReadOnlyList<ItemStepResponse> Steps,
+    IReadOnlyList<ItemAgentRunResponse> AgentRuns);
+
+public sealed record ItemFindingsResponse(int Attempt, string Gate, string Outcome, double Score, DateTimeOffset EvaluatedAt, IReadOnlyList<ItemFindingResponse> Findings);
+
+public sealed record ItemFindingResponse(string Code, string Severity, string? SlotId, string Detail, double? Measured, double? Threshold, double? Confidence);
+
+public sealed record ItemStepResponse(string StepName, int Attempt, string Outcome, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt, string? Error);
+
+public sealed record ItemAgentRunResponse(string AgentName, int Attempt, string ModelId, string Outcome, long CostMicroCents, int DurationMs, DateTimeOffset StartedAt);
 
 public sealed record RateItemRequest(int Score, string? Note);
 

@@ -175,8 +175,15 @@ approval gets (now via a shared `Infrastructure/Content/ContentHistoryRecorder.c
 out of the job handler so both callers stay in sync) and rebuilds the package; reject reuses
 `ContentItemStatus.Failed` rather than inventing a new status.
 
-**Not yet built anywhere:** the review UI itself (no frontend exists at all), the weekly
-email, a tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide
-(not just per-campaign) QA pass-rate aggregate, §27's eval scenarios (need golden fixture
-images), the metric dashboard, budget recalibration from real campaigns, and a performed
-backup/restore drill.
+**Also landed**: `GET /api/campaigns/{id}/items/{itemId}` — findings (every `QualityReview`
++ its findings), the run tree (`WorkflowStep`s in order), and every `AgentRun` against the
+item with cost. This closes out Phase 8's own stated feature list on the backend side
+(packaging, ZIP, browse/download, rating, approve/reject, findings, run tree, QA pass-rate,
+cost, retention) — everything except the weekly email.
+
+**Not yet built anywhere:** the review UI itself (no frontend exists at all — every endpoint
+above is an API a frontend would call), the weekly email (needs a provider decision), a
+tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide (not just
+per-campaign) QA pass-rate aggregate, §27's eval scenarios (need golden fixture images), the
+metric dashboard, budget recalibration from real campaigns, and a performed backup/restore
+drill.

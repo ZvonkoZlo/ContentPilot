@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Observability;
+using ContentPilot.Domain.Quality;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.IntegrationTests.Infrastructure;
@@ -548,6 +549,65 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
         (await db.ContentHistory.CountAsync(h => h.ContentItemId == item.Id)).ShouldBe(0);
     }
 
+    [DockerFact]
+    public async Task Item_detail_carries_its_findings_step_history_and_agent_runs()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 6, 14) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, campaign!.Id, ContentItemType.StaticPost, "Explainable end to end", "problem-solution", "Prove the run tree works.", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var run = new WorkflowRun(_tenantId, campaign.Id, WorkflowScope.Item, item.Id, DateTimeOffset.UtcNow);
+        db.WorkflowRuns.Add(run);
+        await db.SaveChangesAsync();
+
+        var writingStep = new WorkflowStep(_tenantId, run.Id, nameof(ContentItemStatus.Writing), 1, DateTimeOffset.UtcNow);
+        writingStep.Succeed(DateTimeOffset.UtcNow);
+        db.WorkflowSteps.Add(writingStep);
+
+        db.QualityReviews.Add(new QualityReview(
+            _tenantId, item.Id, 1, QaGate.Visual, QaOutcome.NeedsReview, 0.66,
+            [new QaFinding { Code = QaFindingCode.PoorComposition, Severity = QaSeverity.Major, Detail = "Subject too far left.", Confidence = 0.8 }],
+            DateTimeOffset.UtcNow));
+
+        var agentRun = new AgentRun(_tenantId, campaign.Id, item.Id, "visual-qa", "v1", Guid.CreateVersion7(), "claude-sonnet-5", 1, DateTimeOffset.UtcNow);
+        agentRun.Succeed(TokenUsageSnapshot.Empty, costMicroCents: 12_345, durationMs: 400, completedAt: DateTimeOffset.UtcNow);
+        db.AgentRuns.Add(agentRun);
+
+        await db.SaveChangesAsync();
+
+        var response = await _client.GetAsync($"/api/campaigns/{campaign.Id}/items/{item.Id}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var detail = await response.Content.ReadFromJsonAsync<ItemDetailDto>();
+
+        detail!.Topic.ShouldBe("Explainable end to end");
+        detail.Reviews.ShouldHaveSingleItem();
+        detail.Reviews[0].Gate.ShouldBe("Visual");
+        detail.Reviews[0].Findings.ShouldHaveSingleItem();
+        detail.Reviews[0].Findings[0].Code.ShouldBe("PoorComposition");
+        detail.Steps.ShouldContain(s => s.StepName == "Writing" && s.Outcome == "Succeeded");
+        detail.AgentRuns.ShouldContain(r => r.AgentName == "visual-qa" && r.CostMicroCents == 12_345);
+    }
+
+    [DockerFact]
+    public async Task An_unknown_item_has_no_detail_to_read()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 6, 21) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var response = await _client.GetAsync($"/api/campaigns/{campaign!.Id}/items/{Guid.NewGuid()}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
     private sealed record CampaignDto(Guid Id, Guid BrandId, string Status);
 
     private sealed record ItemDto(Guid Id, string Topic);
@@ -556,6 +616,19 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
 
     private sealed record ItemStatusDto(
         Guid Id, int Ordinal, string Type, string Topic, string Pillar, string PublishDay, string Status, int QualityAttempts, string? FailureReason);
+
+    private sealed record ItemDetailDto(
+        Guid Id, int Ordinal, string Type, string Topic, string Pillar, string Objective, string PublishDay, string Status,
+        int QualityAttempts, string? FailureReason,
+        List<ItemFindingsDto> Reviews, List<ItemStepDto> Steps, List<ItemAgentRunDto> AgentRuns);
+
+    private sealed record ItemFindingsDto(int Attempt, string Gate, string Outcome, double Score, DateTimeOffset EvaluatedAt, List<ItemFindingDto> Findings);
+
+    private sealed record ItemFindingDto(string Code, string Severity, string? SlotId, string Detail, double? Measured, double? Threshold, double? Confidence);
+
+    private sealed record ItemStepDto(string StepName, int Attempt, string Outcome, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt, string? Error);
+
+    private sealed record ItemAgentRunDto(string AgentName, int Attempt, string ModelId, string Outcome, long CostMicroCents, int DurationMs, DateTimeOffset StartedAt);
 
     private sealed record DownloadDto(string Url);
 
