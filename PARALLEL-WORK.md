@@ -420,3 +420,37 @@ a copywriter agent for Writing, and the job handler that leases a `WorkflowRun`,
 `OrchestratorCore.Decide`, executes the named step against these entities, and persists the
 result in one transaction. Every policy and every entity the loop needs now exists; nothing
 yet holds them in one hand.
+
+### Phase 5 continued — the copywriter agent (`claude`)
+
+`CopywriterAgent` (`Application/Agents/`) is the Writing step's executor — the last agent
+the item pipeline needed. Same shape as `ContentStrategistAgent`: an `IAgent<TInput,
+TOutput>` that builds prompt variables and validates its own output, nothing else. It is
+handed a chosen template's text slots and their character budgets directly (as
+`CopySlotBrief`, language-adjusted already via `TextSlot.BudgetFor`) rather than the
+template itself — the model writes to numbers, never to layout.
+
+`CopyValidator` mirrors `PlanValidator`'s split: every rule the `copywriter.prompt.md`
+prompt states is checked here too — slot coverage (no missing slot, no unknown one, no slot
+written twice), the character budget as a hard ceiling, fact citations restricted to the
+keys the strategist's plan actually allowed for this item, and `ToneOfVoice.BannedWords`
+checked literally with a word-boundary regex (so a ban on "ass" cannot trip on "class" —
+that field's own doc comment already promised a literal, not conceptual, check).
+`CopySetSchema` is hand-written like `WeeklyPlanSchema`, for the same reason: both provider
+schemas require every property listed in `required` with `additionalProperties: false`.
+
+The `copywriter` model profile already existed in both `appsettings.json` files from
+whenever the AI layer's configuration was first laid out — this is the first agent to
+actually use it. Registered as a singleton alongside `ContentStrategistAgent` in
+`AiServiceCollectionExtensions`.
+
+**With this, every step but SpecAssembly has a real executor**: Directing
+(`TemplateSelector`), Writing (`CopywriterAgent`), Rendering (`IRendererClient`), Validating
+(`DeterministicQaSuite` + `IRendererClient.CompareAsync`). SpecAssembly — turning a chosen
+template, a `CopySet`, and the brand's tokens/assets into the `RenderImageRequest` a
+`CreativeSpec` pins — is now pure glue with no missing dependency: everything it needs
+(`TemplateManifest`, `CopySet`, `BrandTokens`, `AssetView`) already exists. That, and the
+job handler that actually runs the loop, are what remain.
+
+344 unit tests green (23 new), 10 architecture, 51 integration and the workflow smoke test
+green against real Postgres; full build clean.

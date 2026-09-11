@@ -94,9 +94,11 @@ Config shapes live in `AiOptions.cs` (`AiOptions`, `ProviderOptions`, `ModelProf
 **Agents** — `Application/Agents/`: `IAgent<TInput,TOutput>`, `AgentResult<T>`,
 `AgentValidationException`; `ContentStrategistAgent` with `StrategistInput` and
 `RecentContent`; `WeeklyPlan` / `PlannedItem` / `WeeklyPlanSchema`; `PlanValidator`;
-`TemplateSelector` (template eligibility computed from manifests). Execution and run
-persistence: `Infrastructure/Ai/AgentExecutor.cs` with `AgentContext`. Prompts:
-`Application/Prompts/` (`PromptLibrary`, `PromptTemplate`), registry in
+`CopywriterAgent` with `CopywriterInput`; `CopySet` / `CopySlot` / `CopySetSchema`;
+`CopyValidator` with `CopySlotBrief`; `TemplateSelector` (template eligibility computed from
+manifests). Execution and run persistence: `Infrastructure/Ai/AgentExecutor.cs` with
+`AgentContext`. Prompts: `Application/Prompts/` (`PromptLibrary`, `PromptTemplate`,
+`content-strategist.prompt.md`, `copywriter.prompt.md`), registry in
 `Infrastructure/Ai/PromptRegistry.cs`.
 
 **Content memory** — `Application/ContentMemory/SimHash.cs`;
