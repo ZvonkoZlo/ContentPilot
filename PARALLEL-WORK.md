@@ -1114,3 +1114,31 @@ Swept the rest of the domain for the same failure mode (`grep` every `DbSet<T>` 
 `ContentHistoryEntry` was the one gap.
 
 386 unit, 10 architecture, 94 integration, 1 workflow test green; full build clean.
+
+### §23's "what did this campaign cost" endpoint (`claude`)
+
+`GET /api/campaigns/{id}/cost`: total spend (sum of `CostEntry.AmountMicroCents`), a
+per-agent breakdown (joined against `AgentRun.AgentName`), and how much of the tenant's
+`MaxCostPerCampaignMicroCents` remains. Reads the same ledger `BudgetGuard` and
+`BudgetedLanguageModelClient` already write to — nothing new is tracked, this just surfaces
+it.
+
+**Gotcha**: the first version projected `GroupBy(...).Select(g => new CampaignCostByAgent(...))`
+directly — constructing a positional record from inside a `GroupBy`/`Select` failed to
+translate through EF/Npgsql and the endpoint 500'd with no useful detail (ASP.NET's default
+problem-details response hides the exception). Fixed by projecting into an anonymous type,
+materializing with `ToListAsync`, and mapping to the record client-side afterward — the same
+"anonymous type first, real type after" pattern used elsewhere in this codebase for exactly
+this reason.
+
+**Noted but not changed**: gates 2/3 (VisualQA/MarketingQA) are billable calls that run
+without the item-level `CheckWritingBudgetAsync`/`BudgetGuard` check Writing gets — they are
+still protected by `BudgetedLanguageModelClient`'s coarser, provider-decorator-level check
+against `AiOptions.CampaignBudgetMicroCents` (a flat $2 default, tighter than the $6
+per-tenant `TenantLimits.MaxCostPerCampaignMicroCents` default), so a campaign cannot
+actually run away financially — just not through the same per-tenant-configurable mechanism
+Writing uses. A real gap would be worth closing; a global config value that happens to be
+tighter than the per-tenant one in every configured environment so far is a design note, not
+a bug, so left alone this pass.
+
+386 unit, 10 architecture, 95 integration (1 new), 1 workflow test green; full build clean.

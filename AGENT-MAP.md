@@ -181,9 +181,11 @@ object-storage bytes. `Worker/Program.cs` seeds the first occurrence of each of 
 idempotently on startup. `Api/Endpoints/CampaignEndpoints.cs` — `POST /api/campaigns`,
 `GET /api/campaigns/{id}`, `GET /api/campaigns/{id}/items`, `POST
 /api/campaigns/{id}/cancel`, `GET /api/campaigns/{id}/package`, `POST
-/api/campaigns/{id}/items/{itemId}/rating` — is the manual trigger from §21, its read side,
-cancellation (campaign-level only; items already in flight are not reached), the package
-index, and the 1–5 human rating. Proven end to
+/api/campaigns/{id}/items/{itemId}/rating`, `GET /api/campaigns/{id}/cost` — is the manual
+trigger from §21, its read side, cancellation (campaign-level only; items already in flight
+are not reached), the package index, the 1–5 human rating, and §23's "what did this campaign
+cost" (total + per-agent breakdown + budget remaining, from the same `CostEntry` ledger
+`BudgetGuard` reads). Proven end to
 end against real Postgres/MinIO in `ContentItemWorkflowJobHandlerTests.cs`,
 `CampaignWorkflowJobHandlerTests.cs`, `CampaignTriggerJobHandlerTests.cs`,
 `CampaignPackagerTests.cs`, and the campaign/package/rating tests appended to

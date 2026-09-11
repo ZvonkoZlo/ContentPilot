@@ -168,6 +168,40 @@ public static class CampaignEndpoints
             "approved on their first quality attempt, with no remediation restart. Null " +
             "until at least one item reaches a terminal state.");
 
+        group.MapGet("/{id:guid}/cost", async (Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var campaign = await db.ContentCampaigns.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+
+            if (campaign is null)
+            {
+                return Results.NotFound();
+            }
+
+            var tenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == campaign.TenantId, ct);
+
+            var total = await db.CostEntries
+                .Where(e => e.CampaignId == id)
+                .SumAsync(e => (long?)e.AmountMicroCents, ct) ?? 0;
+
+            var byAgent = (await db.CostEntries
+                .Where(e => e.CampaignId == id && e.AgentRunId != null)
+                .Join(db.AgentRuns, e => e.AgentRunId, r => r.Id, (e, r) => new { r.AgentName, e.AmountMicroCents })
+                .GroupBy(x => x.AgentName)
+                .Select(g => new { AgentName = g.Key, MicroCents = g.Sum(x => x.AmountMicroCents), Calls = g.Count() })
+                .ToListAsync(ct))
+                .Select(x => new CampaignCostByAgent(x.AgentName, x.MicroCents, x.Calls))
+                .OrderByDescending(a => a.MicroCents)
+                .ToList();
+
+            var budget = tenant?.Limits.MaxCostPerCampaignMicroCents ?? 0;
+
+            return Results.Ok(new CampaignCostResponse(id, total, budget, budget - total, byAgent));
+        })
+        .WithSummary(
+            "§23's \"what did this campaign cost\": total spend, per-agent breakdown, and " +
+            "how much of the tenant's per-campaign budget is left. Sums CostEntry directly " +
+            "— the same ledger BudgetGuard and the reserve-then-commit checks read from.");
+
         group.MapPost("/{id:guid}/items/{itemId:guid}/rating", async (
             Guid id, Guid itemId, RateItemRequest request, AppDbContext db, IUnitOfWork uow, IClock clock, CancellationToken ct) =>
         {
@@ -233,3 +267,8 @@ public sealed record CampaignPackageResponse(Guid CampaignId, DateTimeOffset Bui
 public sealed record RateItemRequest(int Score, string? Note);
 
 public sealed record RatingResponse(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
+
+public sealed record CampaignCostResponse(
+    Guid CampaignId, long TotalMicroCents, long BudgetMicroCents, long RemainingMicroCents, IReadOnlyList<CampaignCostByAgent> ByAgent);
+
+public sealed record CampaignCostByAgent(string AgentName, long MicroCents, int Calls);

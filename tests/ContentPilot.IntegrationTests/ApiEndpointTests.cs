@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Domain.Content;
+using ContentPilot.Domain.Observability;
 using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.IntegrationTests.Infrastructure;
 using ContentPilot.TestSupport;
@@ -302,6 +303,39 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     }
 
     [DockerFact]
+    public async Task Campaign_cost_sums_ledger_entries_and_breaks_them_down_by_agent()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 5, 17) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var run = new AgentRun(_tenantId, campaign!.Id, null, "strategist", "v1", Guid.CreateVersion7(), "claude-sonnet-5", 1, DateTimeOffset.UtcNow);
+        run.Succeed(TokenUsageSnapshot.Empty, costMicroCents: 0, durationMs: 10, completedAt: DateTimeOffset.UtcNow);
+        db.AgentRuns.Add(run);
+        await db.SaveChangesAsync();
+
+        db.CostEntries.AddRange(
+            new CostEntry(_tenantId, campaign.Id, null, run.Id, CostKind.InputTokens, "anthropic", "claude-sonnet-5", 1000, 300, 30_000, DateTimeOffset.UtcNow),
+            new CostEntry(_tenantId, campaign.Id, null, run.Id, CostKind.OutputTokens, "anthropic", "claude-sonnet-5", 500, 1500, 75_000, DateTimeOffset.UtcNow),
+            new CostEntry(_tenantId, campaign.Id, null, null, CostKind.RenderSeconds, "renderer", "chromium", 2, 0, 0, DateTimeOffset.UtcNow));
+        await db.SaveChangesAsync();
+
+        var response = await _client.GetAsync($"/api/campaigns/{campaign.Id}/cost");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var cost = await response.Content.ReadFromJsonAsync<CampaignCostDto>();
+        cost!.TotalMicroCents.ShouldBe(105_000);
+        cost.ByAgent.ShouldHaveSingleItem();
+        cost.ByAgent[0].AgentName.ShouldBe("strategist");
+        cost.ByAgent[0].MicroCents.ShouldBe(105_000);
+        cost.ByAgent[0].Calls.ShouldBe(2);
+        cost.RemainingMicroCents.ShouldBe(cost.BudgetMicroCents - 105_000);
+    }
+
+    [DockerFact]
     public async Task A_campaign_that_has_not_been_packaged_yet_has_no_package()
     {
         var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 3, 29) });
@@ -418,6 +452,10 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     private sealed record DownloadDto(string Url);
 
     private sealed record QaPassRateDto(int TotalItems, int TerminalItems, int Approved, int FirstAttemptPasses, int NeedsReview, int Failed, double? FirstAttemptPassRate);
+
+    private sealed record CampaignCostDto(Guid CampaignId, long TotalMicroCents, long BudgetMicroCents, long RemainingMicroCents, List<CampaignCostByAgentDto> ByAgent);
+
+    private sealed record CampaignCostByAgentDto(string AgentName, long MicroCents, int Calls);
 
     private sealed record TenantDto(Guid Id);
 
