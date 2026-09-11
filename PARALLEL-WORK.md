@@ -766,3 +766,21 @@ the one open item, carried forward explicitly rather than left implicit.
 360 unit tests (6 new), 76 integration tests (8 new), 10 architecture and the workflow smoke
 test green against real Postgres and MinIO, confirmed stable across repeated runs; full
 build clean.
+
+### Phase 6 begins — vision support in the AI layer (`claude`)
+
+Phase 5 is done (see above). Starting Phase 6 — Visual QA and Marketing QA — per the plan's
+own recommended order (§36–37: LLM QA "added on top of a working loop", before Phase 8).
+
+First piece, foundational rather than agent-specific: `ILanguageModelClient` had no way to
+attach an image to a call at all — every agent so far has been text-only. `LlmRequest.Images`
+(a new `IReadOnlyList<LlmImageAttachment>`, empty by default) and `IAgent<,>.BuildImages`
+(a default interface member returning empty, so Directing/Writing/every existing agent needs
+no change) are the two additions. Both provider adapters now build a vision-capable message
+turn when images are present — images first, then the instruction text, the same order on
+both vendors so a prompt reads identically regardless of which one a profile names — and a
+plain text turn otherwise, unchanged from before. `AgentExecutor` computes
+`agent.BuildImages(input)` once per call and threads it through.
+
+360 unit, 10 architecture, 76 integration and the workflow smoke test still green — this
+step changes the contract but nothing yet uses the new capability.

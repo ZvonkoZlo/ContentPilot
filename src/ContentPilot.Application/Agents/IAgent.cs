@@ -33,6 +33,13 @@ public interface IAgent<in TInput, TOutput>
     IReadOnlyDictionary<string, string> BuildVariables(TInput input);
 
     /// <summary>
+    /// Images attached to the call, in order. Empty for every text-only agent — a default
+    /// interface member so Directing, Writing and every other non-visual agent needs no
+    /// change; only a vision-capable agent (VisualQA) overrides it.
+    /// </summary>
+    IReadOnlyList<Ai.LlmImageAttachment> BuildImages(TInput input) => [];
+
+    /// <summary>
     /// Deterministic post-conditions. An empty list means the output is usable; anything
     /// else is fed back to the model as a repair instruction, and counted against the
     /// item's quality budget rather than treated as an outage.

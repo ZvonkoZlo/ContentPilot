@@ -94,7 +94,7 @@ public sealed class AnthropicLanguageModelClient : ILanguageModelClient
                 }
                 : request.System,
 
-            Messages = [new() { Role = Role.User, Content = request.User }],
+            Messages = [new() { Role = Role.User, Content = BuildContent(request) }],
         };
 
         var response = await _client.Messages.Create(parameters, cancellationToken: ct);
@@ -166,6 +166,33 @@ public sealed class AnthropicLanguageModelClient : ILanguageModelClient
     /// High: the conservative direction, since mapping up would spend more than the profile
     /// asked for. Remove this branch once the SDK carries the level.
     /// </summary>
+    /// <summary>
+    /// Plain text for every text-only agent — the overwhelming majority — and only builds
+    /// the block-list form (images first, text last, Anthropic's own documented order) when
+    /// an agent actually attached images.
+    /// </summary>
+    private static MessageParamContent BuildContent(LlmRequest request)
+    {
+        if (request.Images.Count == 0)
+        {
+            return request.User;
+        }
+
+        List<ContentBlockParam> blocks = [.. request.Images.Select(image => (ContentBlockParam)new ImageBlockParam(
+            new Base64ImageSource { Data = image.Base64Data, MediaType = ToMediaType(image.MediaType) })), new TextBlockParam(request.User)];
+
+        return blocks;
+    }
+
+    private static MediaType ToMediaType(string mediaType) => mediaType switch
+    {
+        "image/png" => MediaType.ImagePng,
+        "image/jpeg" or "image/jpg" => MediaType.ImageJpeg,
+        "image/gif" => MediaType.ImageGif,
+        "image/webp" => MediaType.ImageWebP,
+        _ => throw new NotSupportedException($"Anthropic vision does not support media type '{mediaType}'."),
+    };
+
     private static Effort ToEffort(ModelEffort effort) => effort switch
     {
         ModelEffort.Low => Effort.Low,

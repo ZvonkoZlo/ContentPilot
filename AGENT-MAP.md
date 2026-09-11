@@ -48,7 +48,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost; only image generation out of scope |
-| 6 — Visual QA and Marketing QA | 1285 | unclaimed |
+| 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — vision support landed, agents not yet built |
 | 7 — Reels | 1303 | in progress (`codex`, branch `phase-7-reels`) |
 | 8 — Packaging, delivery, human review | 1322 | unclaimed |
 | 9 — Hardening, cost calibration, evals | 1342 | unclaimed |

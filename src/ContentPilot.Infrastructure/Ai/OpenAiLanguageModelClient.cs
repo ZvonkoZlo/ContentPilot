@@ -101,7 +101,7 @@ public sealed class OpenAiLanguageModelClient : ILanguageModelClient
         };
 
         var response = await chat.CompleteChatAsync(
-            [new SystemChatMessage(request.System), new UserChatMessage(request.User)],
+            [new SystemChatMessage(request.System), BuildUserMessage(request)],
             completionOptions,
             ct);
 
@@ -153,6 +153,26 @@ public sealed class OpenAiLanguageModelClient : ILanguageModelClient
             DurationMs = durationMs,
             CostMicroCents = profile.PriceOf(usage),
         };
+    }
+
+    /// <summary>
+    /// Plain text for every text-only agent — the overwhelming majority. Images, when an
+    /// agent attached any, are added first, ahead of the instruction text, matching the
+    /// Anthropic adapter's own ordering so a prompt reads the same regardless of vendor.
+    /// </summary>
+    private static UserChatMessage BuildUserMessage(LlmRequest request)
+    {
+        if (request.Images.Count == 0)
+        {
+            return new UserChatMessage(request.User);
+        }
+
+        var parts = request.Images
+            .Select(image => ChatMessageContentPart.CreateImagePart(
+                BinaryData.FromBytes(Convert.FromBase64String(image.Base64Data)), image.MediaType))
+            .Append(ChatMessageContentPart.CreateTextPart(request.User));
+
+        return new UserChatMessage(parts);
     }
 
     /// <summary>

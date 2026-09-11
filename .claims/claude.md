@@ -1,9 +1,9 @@
 ---
 agent: claude
-phase: 5
+phase: 6
 branch: main
-status: done
-migrations: true
+status: active
+migrations: false
 updated: 2026-09-11
 ---
 
@@ -26,7 +26,6 @@ src/ContentPilot.Infrastructure/Branding/
 src/ContentPilot.Infrastructure/Campaigns/
 src/ContentPilot.Infrastructure/Jobs/
 src/ContentPilot.Infrastructure/Rendering/
-src/ContentPilot.Infrastructure/Persistence/Migrations/
 src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
 src/ContentPilot.Worker/Program.cs
 tests/ContentPilot.UnitTests/Agents/
@@ -44,44 +43,24 @@ tests/ContentPilot.WorkflowTests/
 
 ## notes
 
-**Phase 4 done** (deterministic QA). **Phase 5 done**, with one named, reasoned exception —
-see below. Releasing this claim; PARALLEL-WORK.md carries the full history across many
-sections, oldest first, if any of this needs re-deriving later.
+**Phase 5 done** — see PARALLEL-WORK.md for the full history.
 
-**What phase 5 shipped.** Two self-driving job handlers run the whole thing:
-`ContentItemWorkflowJobHandler` (Directing → Validating for one `StaticPost` item, the
-escalation ladder, §24 budget enforcement on Writing, best-attempt promotion on
-`NeedsHumanReview`, proven crash-resumable) and `CampaignWorkflowJobHandler` (plans with the
-strategist, fans out items + their own `WorkflowRun`s, closes the campaign out via its own
-already-legal-transition-enforcing methods). `POST /api/campaigns` is the manual trigger
-from §21; `POST /api/campaigns/{id}/cancel` stops a campaign that has not finished (items
-already in flight are not reached — see PARALLEL-WORK.md for why that scope was chosen).
-`CampaignTriggerScanJobHandler` (hourly, per-brand-timezone) and
-`CampaignTriggerReconcileJobHandler` (daily safety net) are §21's scheduled and
-disaster-recovery triggers, built on the existing job queue rather than a new Hangfire
-dependency — a deliberate, documented substitution, not an oversight. **A `StaticPost`-only
-brand can now go from a trigger — manual, scheduled, or reconciled — to an approved,
-rendered, QA-clean image with no further human input.**
+**Now on phase 6 — Visual QA and Marketing QA**, per the plan's own recommended order
+(§36–37: added on top of a working loop, before Phase 8). Read IMPLEMENTATION-PLAN.md §9
+(gates 2 and 3), §27 (eval scenarios), and phase 6 itself (line 1285) before touching this.
 
-**The one thing still out of scope, on purpose:** background image generation with seeds
-and variant caps. No provider is chosen and no client exists; it is its own vertical, not an
-extension of anything already built. Its absence degrades gracefully rather than silently —
-`TemplateSelector` only offers a template whose required assets already exist as uploads, so
-an item without one simply has fewer eligible templates, never a stuck pipeline. Carousel
-and reel composition and real packaging remain Phase 6/7/8, as the plan's own phase 5
-feature list never included them.
+First piece landed: `ILanguageModelClient` now supports attaching images to a call
+(`LlmRequest.Images`, `IAgent<,>.BuildImages`) — needed before a VisualQA agent can exist at
+all, since every agent so far has been text-only. Both provider adapters updated. No
+behaviour change for existing agents (default empty).
 
-**Two things worth remembering if this lane is picked up again:**
-1. `JobDispatcher.ExecuteAsync` resolves every registered `IJobHandler` on every dispatch
-   attempt — a job type with a rich dependency chain can break dispatch of every job type in
-   a host whose config does not satisfy that chain, not just its own. Hit once
-   (`PingWalkingSkeletonTests`), fixed with a minimal `Ai:Profiles` entry.
-2. `Directory.Build.props` sets `InvariantGlobalization=true` solution-wide. IANA timezone
-   ids resolve fine on Linux (the real deployment target) but can throw
-   `TimeZoneNotFoundException` on a Windows dev box without ICU — caught and skipped
-   per-brand in the trigger handlers, but worth knowing before debugging "why didn't my
-   local cron fire" from scratch.
+**Not yet built:** `VisualQaAgent`, `MarketingQaAgent`, their prompts and validators, the
+6xx/7xx `QaFindingCode` bands are already reserved in `Domain/Quality/QaFinding.cs` from
+Phase 4 waiting for exactly this. Parallel gate execution and finding merge with the
+deterministic gate. The QA pass-rate metric §9 calls for (>60% first-attempt pass, treat a
+false-positive rate over 0.15 as a blocking regression — §27's own numbers). Carousel
+continuity checks are moot until carousels are actually driven (Phase 5 only drives
+StaticPost items).
 
-No `migrations: true` claim needed going forward unless the next phase adds entities —
-whoever picks up phase 6, 7, or 8 should claim migrations fresh rather than assume this one
-still holds it.
+`migrations: false` — this phase adds no tables (`QualityReview` and `QaFinding` already
+carry everything a model-gate finding needs).

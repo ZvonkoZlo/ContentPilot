@@ -52,6 +52,7 @@ public sealed class AgentExecutor(
         var prompt = prompts.Get(agent.PromptId);
         var promptVersionId = await registry.ResolveAsync(prompt, ct);
         var (system, user) = prompt.Render(agent.BuildVariables(input));
+        var images = agent.BuildImages(input);
 
         var repaired = new List<string>();
         long spent = 0;
@@ -80,6 +81,7 @@ public sealed class AgentExecutor(
                     Operation = $"{agent.Name}-{attempt}",
                     CampaignId = context.CampaignId,
                     ContentItemId = context.ContentItemId,
+                    Images = images,
                 }, ct);
 
                 spent += response.CostMicroCents;
