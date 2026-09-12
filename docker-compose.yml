@@ -15,7 +15,10 @@ x-app-env: &app-env
   ObjectStorage__SecretKey: ${MINIO_ROOT_PASSWORD:-contentpilot-dev-secret}
   ObjectStorage__ForcePathStyle: "true"
   Telemetry__OtlpEndpoint: "http://aspire:18889"
-  Renderer__BaseAddress: "http://renderer:8080"
+  # RendererClientOptions's bound property is BaseUrl, not BaseAddress — this was silently
+  # ignored (unknown config keys don't error) and every render call fell back to the
+  # option's http://localhost:8081 default, unreachable inside a container.
+  Renderer__BaseUrl: "http://renderer:8080"
   # Read from .env (see .env.example) — compose only substitutes these into the values
   # below, it does not forward arbitrary host environment variables into a container on
   # its own, so without this line here the key never reaches api/worker regardless of what
