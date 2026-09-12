@@ -49,11 +49,19 @@ public sealed class ContentHistoryRecorder(AppDbContext db)
         db.ContentHistory.Add(entry);
     }
 
+    /// <summary>
+    /// The most recent successful Writing step at or before <paramref name="attempt"/>, not
+    /// an exact match — Writing is only re-run when remediation specifically restarts
+    /// there, so an item approved after restarting at a later step has no Writing step at
+    /// its own final attempt number and must reuse an earlier one's copy.
+    /// </summary>
     private async Task<CopySet?> LoadCopySetAsync(Guid workflowRunId, int attempt, CancellationToken ct)
     {
-        var step = await db.WorkflowSteps.AsNoTracking().FirstOrDefaultAsync(
-            s => s.WorkflowRunId == workflowRunId && s.StepName == nameof(ContentItemStatus.Writing) &&
-                 s.Attempt == attempt && s.Outcome == WorkflowStepOutcome.Succeeded, ct);
+        var step = await db.WorkflowSteps.AsNoTracking()
+            .Where(s => s.WorkflowRunId == workflowRunId && s.StepName == nameof(ContentItemStatus.Writing) &&
+                        s.Attempt <= attempt && s.Outcome == WorkflowStepOutcome.Succeeded)
+            .OrderByDescending(s => s.Attempt)
+            .FirstOrDefaultAsync(ct);
 
         return step?.ResultJson is null ? null : JsonSerializer.Deserialize<CopySet>(step.ResultJson, Json);
     }

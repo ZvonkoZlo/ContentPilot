@@ -406,9 +406,19 @@ public sealed class ContentItemWorkflowJobHandler(
         var directing = await LoadDirectingResultAsync(run.Id, ct)
             ?? throw new PermanentJobFailureException($"Item {item.Id}: reached SpecAssembly with no recorded Directing decision.");
 
-        var writingStep = await db.WorkflowSteps.AsNoTracking().FirstOrDefaultAsync(
-            s => s.WorkflowRunId == run.Id && s.StepName == nameof(ContentItemStatus.Writing) &&
-                 s.Attempt == attempt && s.Outcome == WorkflowStepOutcome.Succeeded, ct)
+        // Writing is not re-run on every attempt — only remediation that specifically
+        // restarts at Writing produces a new copy (the same reason LoadDirectingResultAsync
+        // looks up the latest Directing decision rather than one scoped to this exact
+        // attempt). A remediation restart at SpecAssembly or later bumps this attempt's
+        // number via RecordQualityAttempt() without writing a new Writing step, so an exact
+        // match on `attempt` here found nothing the moment that happened live — the fix is
+        // the most recent successful Writing step at or before this attempt, matching the
+        // copy this attempt is actually supposed to reuse.
+        var writingStep = await db.WorkflowSteps.AsNoTracking()
+            .Where(s => s.WorkflowRunId == run.Id && s.StepName == nameof(ContentItemStatus.Writing) &&
+                        s.Attempt <= attempt && s.Outcome == WorkflowStepOutcome.Succeeded)
+            .OrderByDescending(s => s.Attempt)
+            .FirstOrDefaultAsync(ct)
             ?? throw new PermanentJobFailureException($"Item {item.Id}: reached SpecAssembly with no recorded copy.");
 
         var copySet = JsonSerializer.Deserialize<CopySet>(writingStep.ResultJson!, Json)!;
@@ -645,11 +655,21 @@ public sealed class ContentItemWorkflowJobHandler(
         }
     }
 
+    /// <summary>
+    /// The most recent successful Writing step at or before <paramref name="attempt"/>, not
+    /// an exact match on it — Writing is only re-run when remediation specifically restarts
+    /// there, so a later attempt that restarted at SpecAssembly or beyond has no Writing
+    /// step of its own and must reuse an earlier one's copy, the same reason
+    /// <see cref="LoadDirectingResultAsync"/> already looks up the latest Directing decision
+    /// rather than one scoped to the current attempt.
+    /// </summary>
     private async Task<CopySet?> LoadCopySetAsync(Guid runId, int attempt, CancellationToken ct)
     {
-        var step = await db.WorkflowSteps.AsNoTracking().FirstOrDefaultAsync(
-            s => s.WorkflowRunId == runId && s.StepName == nameof(ContentItemStatus.Writing) &&
-                 s.Attempt == attempt && s.Outcome == WorkflowStepOutcome.Succeeded, ct);
+        var step = await db.WorkflowSteps.AsNoTracking()
+            .Where(s => s.WorkflowRunId == runId && s.StepName == nameof(ContentItemStatus.Writing) &&
+                        s.Attempt <= attempt && s.Outcome == WorkflowStepOutcome.Succeeded)
+            .OrderByDescending(s => s.Attempt)
+            .FirstOrDefaultAsync(ct);
 
         return step?.ResultJson is null ? null : JsonSerializer.Deserialize<CopySet>(step.ResultJson, Json);
     }
