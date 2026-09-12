@@ -1314,3 +1314,37 @@ pass — that is the natural next step for whoever tries this end to end.
 test green; full build clean. (`JobQueueTests`' own concurrency race test flaked once under
 full-suite load — passes reliably in isolation, three separate reruns confirmed it, unrelated
 to this work.)
+
+### First real end-to-end run of the docker-compose stack (`claude`)
+
+Actually ran `docker compose up --build -d` for the first time this session (previously only
+individual pieces were exercised through Testcontainers in the test suites) — at the user's
+request, to try the new `frontend/` UI against the real stack.
+
+**Found and fixed a real gap along the way**: `docker-compose.yml`'s shared `x-app-env`
+anchor never referenced any `Ai__*` variable, so `.env.example`'s own documented instructions
+("put your key in `.env`, set `Ai__Enabled=true`") silently did nothing — compose only
+substitutes `${VAR}` into values actually written in the file, it does not forward arbitrary
+`.env`/host variables into a container without an explicit reference. Fixed by adding
+`Ai__Enabled`, `Ai__Cassettes`, `Ai__CampaignBudgetMicroCents`, and both provider `ApiKey`
+variables to the anchor, each defaulted so an unset `.env` still starts cleanly with AI off.
+
+**Also hit, not a bug**: the first `up --build -d` failed on `Container name
+"/contentpilot-renderer-1" is already in use` — a stale container in `Created` state left
+over from an earlier, uncleanly-stopped run. `docker rm` on that one container (verified by
+`docker inspect` first that it really was the leftover renderer, not something else) and a
+retry started everything cleanly. Worth knowing for next time: a `docker compose up` that
+fails with a name conflict like this needs `docker compose down` (not `-v`, which would also
+drop the Postgres/MinIO volumes) or a targeted `docker rm` on the named container, not a
+rebuild.
+
+**Confirmed working end to end**: `docker compose ps` — api/worker×2/renderer/postgres/minio/
+aspire all `Up (healthy)`; `GET /health` → `Healthy`; `GET /api/tenants` and
+`GET /api/brands` (with `X-Tenant-Id`) return the golden tenant/brand seeded in an earlier
+session, `Access-Control-Allow-Origin: http://localhost:4200` present on the response,
+confirming the CORS policy added alongside the frontend actually works against a real
+running API, not just in isolation. `ng serve` on `:4200` reachable throughout.
+
+Not yet tried: an actual campaign generated with a real Anthropic key — `Ai:Enabled` is
+still `false` in this machine's `.env` (no key entered), so the pipeline runs but every
+billable step has nothing to call. That is the natural next verification once a key exists.
