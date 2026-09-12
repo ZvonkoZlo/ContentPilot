@@ -223,6 +223,20 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     }
 
     [DockerFact]
+    public async Task Listing_campaigns_filters_by_brand_and_finds_a_just_triggered_one()
+    {
+        var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 7, 5) });
+        var campaign = await trigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        var response = await _client.GetAsync($"/api/campaigns?brandId={_brandId}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var campaigns = (await response.Content.ReadFromJsonAsync<List<CampaignDto>>())!;
+        campaigns.ShouldContain(c => c.Id == campaign!.Id);
+        campaigns.ShouldAllBe(c => c.BrandId == _brandId);
+    }
+
+    [DockerFact]
     public async Task A_second_trigger_for_the_same_week_is_a_conflict_not_a_duplicate()
     {
         var weekStart = new DateOnly(2032, 3, 1);

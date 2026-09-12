@@ -65,6 +65,24 @@ public static class CampaignEndpoints
         })
         .WithSummary("Reads one campaign's status.");
 
+        group.MapGet("/", async (Guid? brandId, AppDbContext db, CancellationToken ct) =>
+        {
+            var query = db.ContentCampaigns.AsNoTracking().AsQueryable();
+
+            if (brandId is { } id)
+            {
+                query = query.Where(c => c.BrandId == id);
+            }
+
+            var campaigns = await query
+                .OrderByDescending(c => c.WeekStart)
+                .Take(100)
+                .ToListAsync(ct);
+
+            return Results.Ok(campaigns.Select(ToResponse));
+        })
+        .WithSummary("Lists campaigns for the tenant in scope, optionally filtered by brand — the review UI's landing query.");
+
         group.MapGet("/{id:guid}/items", async (Guid id, AppDbContext db, CancellationToken ct) =>
         {
             var items = await db.ContentItems
