@@ -1,0 +1,17 @@
+h2 {
+  font-size: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 4px;
+  margin: 10px 0;
+  max-width: 220px;
+}
+.err {
+  color: #b91c1c;
+}

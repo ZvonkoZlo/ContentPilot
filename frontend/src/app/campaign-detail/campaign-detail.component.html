@@ -1,0 +1,164 @@
+<p><a routerLink="/">← back to campaigns</a></p>
+
+@if (error()) {
+  <div class="card err">{{ error() }}</div>
+}
+
+@if (campaign(); as c) {
+  <div class="card">
+    <h2>
+      Week of {{ c.weekStart }}
+      <span class="badge" [ngClass]="statusClass(c.status)">{{ c.status }}</span>
+    </h2>
+    <p>Theme: {{ c.theme || '—' }}</p>
+    @if (c.failureReason) {
+      <p class="err">Failure: {{ c.failureReason }}</p>
+    }
+    <div class="actions">
+      <button (click)="cancelCampaign()">Cancel campaign</button>
+      <button class="primary" (click)="download()" [disabled]="busy()">Build / get ZIP download link</button>
+      <button (click)="refresh()">Refresh</button>
+    </div>
+    @if (downloadUrl(); as url) {
+      <p><a [href]="url" target="_blank" rel="noopener">Download link (expires in 15 minutes)</a></p>
+    }
+  </div>
+
+  <div class="card">
+    <h2>Quality and cost</h2>
+    <div class="stats">
+      @if (qaPassRate(); as rate) {
+        <div>
+          <strong>First-attempt pass rate:</strong>
+          {{ rate.firstAttemptPassRate === null ? 'n/a yet' : (rate.firstAttemptPassRate * 100).toFixed(0) + '%' }}
+          ({{ rate.firstAttemptPasses }}/{{ rate.terminalItems }} terminal)
+        </div>
+      }
+      @if (cost(); as cst) {
+        <div>
+          <strong>Cost:</strong> {{ formatCents(cst.totalMicroCents) }} of {{ formatCents(cst.budgetMicroCents) }}
+          budget ({{ formatCents(cst.remainingMicroCents) }} remaining)
+        </div>
+        @if (cst.byAgent.length > 0) {
+          <table>
+            <thead><tr><th>Agent</th><th>Cost</th><th>Calls</th></tr></thead>
+            <tbody>
+              @for (a of cst.byAgent; track a.agentName) {
+                <tr><td>{{ a.agentName }}</td><td>{{ formatCents(a.microCents) }}</td><td>{{ a.calls }}</td></tr>
+              }
+            </tbody>
+          </table>
+        }
+      }
+    </div>
+  </div>
+}
+
+<div class="card">
+  <h2>Items</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Type</th><th>Topic</th><th>Day</th><th>Status</th><th>Attempts</th><th></th></tr>
+    </thead>
+    <tbody>
+      @for (i of items(); track i.id) {
+        <tr>
+          <td>{{ i.ordinal }}</td>
+          <td>{{ i.type }}</td>
+          <td>{{ i.topic }}</td>
+          <td>{{ i.publishDay }}</td>
+          <td><span class="badge" [ngClass]="statusClass(i.status)">{{ i.status }}</span></td>
+          <td>{{ i.qualityAttempts }}</td>
+          <td><button (click)="openItem(i.id)">Details</button></td>
+        </tr>
+      }
+    </tbody>
+  </table>
+</div>
+
+@if (selectedItem(); as item) {
+  <div class="card detail">
+    <h2>
+      Item detail — {{ item.topic }}
+      <button (click)="closeItem()">Close</button>
+    </h2>
+    <p><strong>Status:</strong> <span class="badge" [ngClass]="statusClass(item.status)">{{ item.status }}</span></p>
+    <p><strong>Objective:</strong> {{ item.objective }}</p>
+    @if (item.failureReason) {
+      <p class="err">{{ item.failureReason }}</p>
+    }
+
+    @if (item.status === 'NeedsHumanReview') {
+      <div class="review-actions">
+        <button class="primary" (click)="approve(item.id)" [disabled]="busy()">Approve</button>
+        <div class="reject">
+          <input [(ngModel)]="rejectReason" placeholder="Reason for rejecting" size="30" />
+          <button class="danger" (click)="reject(item.id)" [disabled]="busy()">Reject</button>
+        </div>
+      </div>
+    }
+
+    <div class="rate">
+      <label>
+        Rate 1–5 ("would I publish this?")
+        <select [(ngModel)]="rateScore">
+          @for (n of [1, 2, 3, 4, 5]; track n) { <option [value]="n">{{ n }}</option> }
+        </select>
+      </label>
+      <input [(ngModel)]="rateNote" placeholder="Note (optional)" size="24" />
+      <button (click)="rate(item.id)" [disabled]="busy()">Save rating</button>
+    </div>
+
+    <h3>Findings</h3>
+    @if (item.reviews.length === 0) {
+      <p>No QA reviews recorded yet.</p>
+    } @else {
+      @for (r of item.reviews; track r.gate + r.attempt) {
+        <div class="review">
+          <strong>{{ r.gate }}</strong> attempt {{ r.attempt }} —
+          <span class="badge" [ngClass]="r.outcome === 'Pass' ? 'ok' : (r.outcome === 'Fail' ? 'bad' : 'warn')">{{ r.outcome }}</span>
+          (score {{ r.score.toFixed(2) }})
+          @if (r.findings.length === 0) {
+            <p>Clean — no findings.</p>
+          } @else {
+            <ul>
+              @for (f of r.findings; track f.code) {
+                <li>[{{ f.severity }}] {{ f.code }}: {{ f.detail }}</li>
+              }
+            </ul>
+          }
+        </div>
+      }
+    }
+
+    <h3>Run tree</h3>
+    <table>
+      <thead><tr><th>Step</th><th>Attempt</th><th>Outcome</th><th>Started</th><th>Error</th></tr></thead>
+      <tbody>
+        @for (s of item.steps; track s.stepName + s.attempt) {
+          <tr>
+            <td>{{ s.stepName }}</td><td>{{ s.attempt }}</td>
+            <td><span class="badge" [ngClass]="s.outcome === 'Succeeded' ? 'ok' : 'bad'">{{ s.outcome }}</span></td>
+            <td>{{ s.startedAt | date: 'short' }}</td>
+            <td>{{ s.error || '—' }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+
+    <h3>Agent runs</h3>
+    <table>
+      <thead><tr><th>Agent</th><th>Model</th><th>Outcome</th><th>Cost</th><th>Duration</th></tr></thead>
+      <tbody>
+        @for (a of item.agentRuns; track a.agentName + a.attempt) {
+          <tr>
+            <td>{{ a.agentName }}</td><td>{{ a.modelId }}</td>
+            <td><span class="badge" [ngClass]="a.outcome === 'Succeeded' ? 'ok' : 'bad'">{{ a.outcome }}</span></td>
+            <td>{{ formatCents(a.costMicroCents) }}</td>
+            <td>{{ a.durationMs }}ms</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

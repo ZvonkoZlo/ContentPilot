@@ -1,0 +1,55 @@
+@if (!ready()) {
+  <div class="card">Pick a tenant and a brand above to get started.</div>
+} @else {
+  <div class="card">
+    <h2>Trigger a campaign</h2>
+    <p>Generates a week for the selected brand — "generate now", the same path the weekly schedule uses.</p>
+    <label>
+      Week start (optional, defaults to next Monday)
+      <input type="date" [(ngModel)]="weekStart" />
+    </label>
+    <button class="primary" (click)="trigger()" [disabled]="triggering()">
+      {{ triggering() ? 'Triggering…' : 'Generate now' }}
+    </button>
+  </div>
+
+  @if (error()) {
+    <div class="card err">{{ error() }}</div>
+  }
+
+  <div class="card">
+    <h2>
+      Campaigns
+      <button (click)="refresh()">Refresh</button>
+    </h2>
+
+    @if (loading()) {
+      <p>Loading…</p>
+    } @else if (campaigns().length === 0) {
+      <p>No campaigns yet for this brand.</p>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th>Week</th>
+            <th>Trigger</th>
+            <th>Status</th>
+            <th>Theme</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (c of campaigns(); track c.id) {
+            <tr>
+              <td>{{ c.weekStart }}</td>
+              <td>{{ c.trigger }}</td>
+              <td><span class="badge" [ngClass]="statusClass(c.status)">{{ c.status }}</span></td>
+              <td>{{ c.theme || '—' }}</td>
+              <td><a [routerLink]="['/campaign', c.id]">Open</a></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+}

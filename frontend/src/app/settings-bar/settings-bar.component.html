@@ -1,0 +1,32 @@
+<div class="bar">
+  <label>
+    API URL
+    <input [(ngModel)]="apiBaseUrl" (change)="applyApiUrl()" size="24" />
+  </label>
+
+  <label>
+    Tenant
+    <select [(ngModel)]="tenantId" (change)="onTenantChange()">
+      <option value="">— choose —</option>
+      @for (t of tenants(); track t.id) {
+        <option [value]="t.id">{{ t.name }}</option>
+      }
+    </select>
+  </label>
+
+  <label>
+    Brand
+    <select [(ngModel)]="brandId" (change)="onBrandChange()" [disabled]="!tenantId">
+      <option value="">— choose —</option>
+      @for (b of brands(); track b.id) {
+        <option [value]="b.id">{{ b.name }}</option>
+      }
+    </select>
+  </label>
+
+  <button (click)="refreshTenants()">Reload tenants</button>
+
+  @if (error()) {
+    <span class="err">{{ error() }}</span>
+  }
+</div>
