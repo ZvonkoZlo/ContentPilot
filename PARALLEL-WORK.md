@@ -1223,3 +1223,59 @@ entities first and mapped to response records client-side afterward.
 packaging, ZIP, browse/download, rating, approve/reject, findings, run tree, QA pass-rate,
 cost, retention. The only Phase 8 item left is the weekly email (needs a provider decision),
 and the review UI itself has no frontend to render any of this yet.
+
+### Phase 9: §27's eval infrastructure and first three scenarios (`claude`)
+
+Per the user's own direction: continue backend work (evals, calibration) rather than the
+frontend or the weekly email. §27 needs a running scenario catalogue and `EvalRun`/
+`EvalResult` tables — built the runnable core, not the full catalogue (most of it needs
+either a live model or golden fixture images this session has no way to produce cheaply;
+see below for exactly which are deferred and why).
+
+**New migration `EvalTracking`**: `EvalRun` (mode, run-at, total/passed counts,
+`AllPassed`) and `EvalResult` (one per scenario: name, `EvalScenarioKind`, passed, detail,
+duration). Neither is tenant-owned — an eval run is a statement about the pipeline's own
+behaviour, not about any tenant's data, the same reason architecture tests aren't
+tenant-scoped. Both `IAppendOnly`, same audit-trail pattern as `AgentRun`/`CostEntry`.
+
+**`Application/Evals/`**: `IEvalScenario` (a name, a `Kind`, a pure `RunAsync`) and
+`EvalRunner.RunAsync` — runs a scenario list, times each, shapes the result into one
+`EvalRun` + one `EvalResult` per scenario. The runner itself has no opinion on persistence,
+so the same call serves a unit test asserting shape and an integration test that actually
+saves to Postgres.
+
+**Three real `EvalScenarioKind.Deterministic` scenarios**, each a regression guard on an
+existing pure validator rather than a judgement of any model's output — exactly what
+cassette-mode evals are honestly for ("catches contract breaks... instantly," never "tells
+you a prompt is better"):
+
+- `StrategistAvoidsRecentTopicsScenario` — an exact-repeat topic against seeded history must
+  fail `PlanValidator`'s novelty check.
+- `StrategistRespectsQuotasAndExclusionsScenario` — a short-count plan and a plan touching
+  an excluded topic must both fail `PlanValidator`.
+- `CopywriterRespectsSlotBudgetsScenario` — copy far over its slot's character budget must
+  fail `CopyValidator`.
+
+**Deliberately not built this pass** (the plan's other catalogue rows, and why each is
+out of scope right now):
+
+- `CreativeDirector picks a legal template and asset` — deterministic, buildable the same
+  way as the three above; simply not gotten to.
+- `VisualQA catches a mutated screenshot` / `does not cry wolf` — needs ten deliberately
+  corrupted renders plus a scripted judgement per image. Buildable without live spend (a
+  scripted `ILanguageModelClient` the same way integration tests already fake one), but a
+  real chunk of work — fixture generation, hand-authored expected findings per corruption —
+  deferred rather than rushed.
+- `Retry terminates` / `Content history respected end to end` — both already have real
+  integration-test coverage (`RemediationRouterTests`, `ContentMemoryTests`); wrapping them
+  as `IEvalScenario`s is mechanical but not done yet.
+- `Overall campaign quality` (judge + human) — needs a real LLM judge call or the operator's
+  own rating; cannot run in cassette mode at all by the plan's own design.
+
+**Also not built**: anything that touches real spend (live mode, the nightly run) or a UI
+(the trend page) — both explicitly listed in Phase 9 as needing a dashboard or real usage
+data this session cannot produce.
+
+394 unit (8 new), 10 architecture, 103 integration (1 new), 1 workflow test green; full
+build clean. (One integration run flagged `JobQueueTests`' own concurrency race test as
+flaky — reran clean in isolation and as part of the full suite; unrelated to this work.)

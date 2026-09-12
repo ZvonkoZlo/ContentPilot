@@ -72,6 +72,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ITenant
 
     public DbSet<Domain.Packaging.HumanRating> HumanRatings => Set<Domain.Packaging.HumanRating>();
 
+    public DbSet<Domain.Evals.EvalRun> EvalRuns => Set<Domain.Evals.EvalRun>();
+
+    public DbSet<Domain.Evals.EvalResult> EvalResults => Set<Domain.Evals.EvalResult>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

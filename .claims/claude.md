@@ -3,8 +3,8 @@ agent: claude
 phase: 9
 branch: main
 status: active
-migrations: false
-updated: 2026-09-11
+migrations: true
+updated: 2026-09-12
 ---
 
 ## paths
@@ -14,6 +14,7 @@ src/ContentPilot.Domain/Observability/
 src/ContentPilot.Domain/Quality/
 src/ContentPilot.Domain/Workflow/
 src/ContentPilot.Domain/Packaging/
+src/ContentPilot.Domain/Evals/
 src/ContentPilot.Application/Ai/
 src/ContentPilot.Application/Agents/
 src/ContentPilot.Application/Prompts/
@@ -23,6 +24,7 @@ src/ContentPilot.Application/Orchestration/
 src/ContentPilot.Application/Jobs/
 src/ContentPilot.Application/Campaigns/
 src/ContentPilot.Application/Packaging/
+src/ContentPilot.Application/Evals/
 src/ContentPilot.Infrastructure/Ai/
 src/ContentPilot.Infrastructure/Branding/
 src/ContentPilot.Infrastructure/Campaigns/
@@ -43,6 +45,7 @@ tests/ContentPilot.UnitTests/Domain/
 tests/ContentPilot.UnitTests/Rendering/
 tests/ContentPilot.UnitTests/Campaigns/
 tests/ContentPilot.UnitTests/Packaging/
+tests/ContentPilot.UnitTests/Evals/
 tests/ContentPilot.IntegrationTests/AssetContentResolverTests.cs
 tests/ContentPilot.IntegrationTests/ContentItemWorkflowJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/CampaignWorkflowJobHandlerTests.cs
@@ -50,6 +53,7 @@ tests/ContentPilot.IntegrationTests/CampaignTriggerJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/CampaignPackagerTests.cs
 tests/ContentPilot.IntegrationTests/AdminEndpointTests.cs
 tests/ContentPilot.IntegrationTests/RetentionJobHandlerTests.cs
+tests/ContentPilot.IntegrationTests/EvalPersistenceTests.cs
 tests/ContentPilot.WorkflowTests/
 
 ## notes
@@ -181,9 +185,16 @@ item with cost. This closes out Phase 8's own stated feature list on the backend
 (packaging, ZIP, browse/download, rating, approve/reject, findings, run tree, QA pass-rate,
 cost, retention) — everything except the weekly email.
 
+**§27's eval infrastructure landed** (migration `EvalTracking`): `EvalRun`/`EvalResult`
+(neither tenant-owned), `Application/Evals/IEvalScenario` + `EvalRunner`, and three real
+`Deterministic` scenarios reusing existing pure validators (`PlanValidator`, `CopyValidator`)
+— regression guards on the checks themselves, not judgements of any model's output, exactly
+what cassette-mode evals are honestly for. See PARALLEL-WORK.md for the full catalogue
+mapping — several rows (VisualQA image scenarios, the judge/human-rated one) are explicitly
+deferred, not forgotten, each with why.
+
 **Not yet built anywhere:** the review UI itself (no frontend exists at all — every endpoint
 above is an API a frontend would call), the weekly email (needs a provider decision), a
 tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide (not just
-per-campaign) QA pass-rate aggregate, §27's eval scenarios (need golden fixture images), the
-metric dashboard, budget recalibration from real campaigns, and a performed backup/restore
-drill.
+per-campaign) QA pass-rate aggregate, the rest of §27's scenario catalogue, the metric
+dashboard, budget recalibration from real campaigns, and a performed backup/restore drill.

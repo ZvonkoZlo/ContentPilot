@@ -51,7 +51,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired in; QA pass-rate metric (`QaPassRateCalculator`) done; still open: §27 evals, carousel continuity |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
 | 8 — Packaging, delivery, human review | 1322 | backend done (`claude`) — packaging, ZIP, browse/download/approve/reject/rating/findings/run-tree/cost/retention all built; only the weekly email and the review UI itself (no frontend exists anywhere) remain |
-| 9 — Hardening, cost calibration, evals | 1342 | in progress (`claude`) — admin views (dead jobs, stuck runs) done; dashboard, calibration, evals need real data/spend this session can't produce |
+| 9 — Hardening, cost calibration, evals | 1342 | in progress (`claude`) — admin views done; §27 eval infra + 3 deterministic scenarios done; rest of catalogue, dashboard, live mode, calibration need real data/spend or fixture-building this session hasn't gotten to |
 | 10 — Post-MVP options | 1359 | not started |
 
 Sub-sections worth jumping straight to: agent contract 208, validators 229, orchestrator
@@ -123,6 +123,17 @@ strategist's recent-content context and `PlanValidator`'s novelty check). Writte
 `Complete` case — the write side was missing for a long stretch of this project's history
 (see PARALLEL-WORK.md); every approved item now leaves a `ContentHistoryEntry` with its
 topic/hook SimHashes and the Directing step's chosen template id.
+
+**Evals (§27)** — `Domain/Evals/` (`EvalRun` — mode/run-at/counts, not tenant-owned;
+`EvalResult` — one per scenario, `EvalScenarioKind`). `Application/Evals/` (`IEvalScenario`,
+`EvalRunner.RunAsync` — pure, no persistence opinion; `Scenarios/` —
+`StrategistAvoidsRecentTopicsScenario`, `StrategistRespectsQuotasAndExclusionsScenario`,
+`CopywriterRespectsSlotBudgetsScenario`, all `Deterministic`, each a regression guard on an
+existing validator rather than a judgement of model output). EF configuration in
+`Infrastructure/Persistence/Configurations/EvalConfigurations.cs`, migration
+`EvalTracking`. Rest of §27's catalogue (VisualQA image scenarios, the judge/human-rated
+one, live mode, the trend page) not built yet — see PARALLEL-WORK.md for what's deferred
+and why.
 
 **Quality (gates 1–3)** — `Domain/Quality/` (`QaFinding` — has an optional `Confidence`, null
 for deterministic findings, set by model gates; `QaFindingCode` — append-only and grouped by
