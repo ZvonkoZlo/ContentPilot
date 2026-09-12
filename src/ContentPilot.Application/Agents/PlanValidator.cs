@@ -102,6 +102,26 @@ public static class PlanValidator
                 problems.Add($"{label} has no objective; the copywriter reads it as its brief.");
             }
 
+            // ContentItem's own constructor caps these — found live, the hard way: a real
+            // model produced a 338-character objective, and with nothing catching it here
+            // first, the domain guard threw an unhandled exception deep inside
+            // CampaignWorkflowJobHandler instead of a plan rejection the repair loop could
+            // act on.
+            if (item.Topic.Length > 300)
+            {
+                problems.Add($"Item {i + 1}'s topic is {item.Topic.Length} characters; 300 is the maximum.");
+            }
+
+            if (item.Pillar.Length > 80)
+            {
+                problems.Add($"{label}'s pillar is {item.Pillar.Length} characters; 80 is the maximum.");
+            }
+
+            if (item.Objective.Length > 300)
+            {
+                problems.Add($"{label}'s objective is {item.Objective.Length} characters; 300 is the maximum.");
+            }
+
             // Excluded topics are the operator's judgement about their own business, so the
             // match is substring and case-insensitive rather than clever.
             var haystack = $"{item.Topic} {item.Objective} {item.Pillar}";

@@ -181,6 +181,7 @@ public sealed class JobDispatcher(
         catch (PermanentJobFailureException ex)
         {
             logger.LogError(ex, "Job {JobId} ({JobType}) failed permanently.", job.Id, job.Type);
+            DiscardPartialWork(db, job);
             await CompleteAsync(db, clock, job, ex.Message, permanent: true, ct);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
         }
@@ -190,9 +191,30 @@ public sealed class JobDispatcher(
                 ex, "Job {JobId} ({JobType}) failed on attempt {Attempt} of {MaxAttempts}.",
                 job.Id, job.Type, job.Attempts, job.MaxAttempts);
 
+            DiscardPartialWork(db, job);
             await CompleteAsync(db, clock, job, $"{ex.GetType().Name}: {ex.Message}", permanent: false, ct);
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
         }
+    }
+
+    /// <summary>
+    /// A handler shares this exact <c>AppDbContext</c> instance with the dispatcher (both
+    /// come from the same job-execution DI scope) and often builds a multi-entity graph in
+    /// several steps before its own <c>SaveChangesAsync</c> — items, then their workflow
+    /// runs, then their jobs, say. If it throws partway through, those earlier steps are
+    /// still sitting in the tracker as <c>Added</c>/<c>Modified</c> entries. Without this,
+    /// <see cref="CompleteAsync"/>'s own save (recording the job's failure) would silently
+    /// commit that half-built graph too — found live: a strategist plan with one item over
+    /// a length limit crashed the fan-out after the first item was already <c>Added</c>,
+    /// and the failure-path save alone was enough to leave that one item permanently
+    /// orphaned, with no workflow run and no job ever created for it. Clearing the tracker
+    /// and re-attaching only the job keeps a failed attempt's partial work exactly as
+    /// uncommitted as a thrown exception is supposed to leave it.
+    /// </summary>
+    private static void DiscardPartialWork(AppDbContext db, Job job)
+    {
+        db.ChangeTracker.Clear();
+        db.Jobs.Attach(job);
     }
 
     private async Task CompleteAsync(AppDbContext db, IClock clock, Job job, string? error, bool permanent, CancellationToken ct)

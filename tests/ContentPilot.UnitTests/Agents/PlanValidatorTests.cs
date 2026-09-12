@@ -64,6 +64,49 @@ public sealed class PlanValidatorTests
     }
 
     [Fact]
+    public void An_objective_over_the_content_items_own_limit_is_rejected()
+    {
+        // Found live: a real strategist call produced a 338-character objective, and with
+        // nothing catching it here first, ContentItem's own 300-character guard threw an
+        // unhandled exception deep inside the campaign job instead of a plan rejection the
+        // repair loop could act on.
+        var tooLong = new string('x', 301);
+        var plan = Plan(
+            Item(topic: "Empty chairs when clients cancel late") with { Objective = tooLong },
+            Item(topic: "Booking requests lost in a full inbox"),
+            Item("Carousel", "Setting up a shared diary for four barbers", factKeys: "multi-staff"),
+            Item("Reel", "A client books at midnight while you sleep", factKeys: "public-booking-page"));
+
+        PlanValidator.Validate(plan, Context()).ShouldContain(p => p.Contains("objective"));
+    }
+
+    [Fact]
+    public void A_topic_over_the_content_items_own_limit_is_rejected()
+    {
+        var tooLong = new string('x', 301);
+        var plan = Plan(
+            Item(topic: tooLong),
+            Item(topic: "Booking requests lost in a full inbox"),
+            Item("Carousel", "Setting up a shared diary for four barbers", factKeys: "multi-staff"),
+            Item("Reel", "A client books at midnight while you sleep", factKeys: "public-booking-page"));
+
+        PlanValidator.Validate(plan, Context()).ShouldContain(p => p.Contains("topic"));
+    }
+
+    [Fact]
+    public void A_pillar_over_the_content_items_own_limit_is_rejected()
+    {
+        var tooLong = new string('x', 81);
+        var plan = Plan(
+            Item(topic: "Empty chairs when clients cancel late") with { Pillar = tooLong },
+            Item(topic: "Booking requests lost in a full inbox"),
+            Item("Carousel", "Setting up a shared diary for four barbers", factKeys: "multi-staff"),
+            Item("Reel", "A client books at midnight while you sleep", factKeys: "public-booking-page"));
+
+        PlanValidator.Validate(plan, Context()).ShouldContain(p => p.Contains("pillar"));
+    }
+
+    [Fact]
     public void A_short_week_is_rejected_rather_than_quietly_accepted()
     {
         // Silently accepting three items would mean the operator gets a thin week and no
