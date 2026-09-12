@@ -1365,3 +1365,47 @@ testing pieces of it: the missing `Ai:*` env forwarding, this healthcheck, and (
 earlier session) `ContentAsset.StorageKey` never pointing at real bytes. Running the whole
 thing end to end, even once, catches a category of bug unit and integration tests structurally
 cannot.
+
+### A real bug hit on the very first live campaign, found and fixed (`claude`)
+
+With the user's real Anthropic key in place and `Ai:Enabled=true`, the very first strategist
+call — `content-strategist-1 on claude-opus-5: 1257 in, 1415 out, 21673ms` — succeeded, then
+the job immediately failed: `InvalidOperationException: AgentRun is append-only and cannot
+be modified.`
+
+**Root cause**: `BudgetedLanguageModelClient.CompleteAsync` called `db.SaveChangesAsync()`
+itself, right after adding a `CostEntry`, whenever the response was real (not
+`FromCassette`). That flush lands on the exact same shared, scoped `DbContext`
+`AgentExecutor` is still using to build the `AgentRun` for this same call —
+`AgentExecutor` had only `Add()`-ed the run and called `AttachTrace` on it (both legal on an
+`Added` entity) before the model call, planning to call `AttachPayloads`/`Succeed` on it
+*after*. The premature save inside the budget decorator committed the run from `Added` to
+`Unchanged` mid-flight; `AgentExecutor`'s later mutations then made it `Modified`, and its
+own subsequent `SaveChangesAsync` hit the append-only guard.
+
+**Why nothing caught this in months of tests**: every single test in the entire suite
+constructs `AgentExecutor` with a raw scripted/cassette `ILanguageModelClient` directly,
+bypassing the real decorator chain (`Budgeted → Cassette → Resilient → ProviderRouting →
+provider`) entirely — and cassette responses set `FromCassette = true`, which was exactly
+the flag that skipped the buggy save path. The interaction was structurally invisible to
+cassette-mode testing; only a real, live call could ever trigger it. This is the strongest
+argument yet in this project for trying the real thing occasionally, not only its recordings.
+
+**Fix**: removed the premature save. Every code path through `AgentExecutor.RunAsync`
+already calls `SaveChangesAsync` right after it finishes mutating the run (success, schema-
+repair failure, refusal, or exception) — the `CostEntry` added by the budget decorator now
+simply rides along on that same save, which is strictly better than the split save it
+replaced (cost and outcome commit atomically instead of in two round trips).
+
+**New regression test** in `AgentExecutorTests.cs` constructs a real
+`BudgetedLanguageModelClient` around the scripted model (built by hand with a minimal
+`AiOptions`/`ModelProfileRegistry`, since this fixture's DI container has no `Ai:Profiles`
+section) — the one test in the file that doesn't bypass the decorator. Verified it the hard
+way: stashed the fix, confirmed the test reproduces the exact production exception, restored
+the fix, confirmed green.
+
+**Confirmed fixed live**: rebuilt the `api`/`worker` images, re-triggered a fresh campaign —
+it planned successfully with a real, novel theme ("Your diary should keep filling while you
+are busy cutting hair.") and fanned out into a real `ContentItem`, no exception.
+
+394 unit, 10 architecture, 105 integration (1 new) test green; full build clean.
