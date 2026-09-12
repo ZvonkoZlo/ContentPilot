@@ -14,6 +14,7 @@ using ContentPilot.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Shouldly;
 
 namespace ContentPilot.IntegrationTests;
@@ -37,6 +38,72 @@ public sealed class AgentExecutorTests(ContentPilotFixture fixture)
     /// the suite.
     /// </summary>
     private static int _week;
+
+    /// <summary>
+    /// Every other test in this file constructs <c>AgentExecutor</c> with the scripted
+    /// model as its direct <c>ILanguageModelClient</c>, bypassing the real decorator chain
+    /// (Budgeted → Cassette → Resilient → ProviderRouting → provider) entirely. That is
+    /// exactly why a real bug here went unnoticed by the whole suite: with a real,
+    /// non-cassette response, <c>BudgetedLanguageModelClient</c> used to call
+    /// <c>SaveChangesAsync</c> itself right after recording a <c>CostEntry</c> — on the same
+    /// shared, scoped <c>DbContext</c> that <c>AgentExecutor</c> was still using to build the
+    /// very <c>AgentRun</c> for this same call. That premature save flushed the run from
+    /// <c>Added</c> to <c>Unchanged</c> mid-flight; <c>AgentExecutor</c>'s own later
+    /// mutations to it (<c>AttachPayloads</c>, <c>Succeed</c>) then hit the append-only
+    /// guard as a <c>Modified</c> entity on its own subsequent save, and the whole call
+    /// failed with "AgentRun is append-only and cannot be modified" — found only once a
+    /// real Anthropic key was used for the first time, live, outside any test.
+    /// </summary>
+    [DockerFact]
+    public async Task A_call_through_the_real_budget_decorator_does_not_trip_the_append_only_guard()
+    {
+        var (scope, campaignId, input) = await SetupAsync();
+        await using var _ = scope;
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var inner = new ScriptedModel(Plan(4));
+
+        // This fixture's DI container only ever configures Postgres/MinIO connection
+        // settings (see ContentPilotFixture) — no Ai:Profiles section reaches it, so the
+        // real IModelProfileRegistry can't be resolved here. Built by hand instead, with
+        // just enough of a "strategist" profile for RecordCost's price lookup to succeed.
+        var aiOptions = Options.Create(new AiOptions
+        {
+            CampaignBudgetMicroCents = 200_000_000,
+            Profiles = new Dictionary<string, ModelProfileOptions>
+            {
+                ["strategist"] = new()
+                {
+                    ModelId = "claude-opus-5",
+                    InputPricePerMillion = 500_000_000,
+                    OutputPricePerMillion = 2_500_000_000,
+                },
+            },
+        });
+
+        var budgeted = new BudgetedLanguageModelClient(
+            inner,
+            db,
+            new ModelProfileRegistry(aiOptions),
+            aiOptions,
+            NullLogger<BudgetedLanguageModelClient>.Instance);
+
+        var executor = Executor(scope, budgeted);
+
+        // No Should.NotThrowAsync wrapper needed: an unhandled exception here fails the
+        // test on its own, and the bug this guards against was exactly an exception this
+        // call used to throw.
+        var result = await executor.RunAsync(
+            new ContentStrategistAgent(), input, new AgentContext { CampaignId = campaignId });
+
+        result.Value.Items.Count.ShouldBe(4);
+
+        var run = await db.AgentRuns.AsNoTracking().SingleAsync(r => r.CampaignId == campaignId);
+        run.Outcome.ShouldBe(AgentRunOutcome.Succeeded);
+        run.InputRef.ShouldNotBeNull();
+
+        (await db.CostEntries.CountAsync(e => e.CampaignId == campaignId)).ShouldBe(2); // input + output tokens
+    }
 
     [DockerFact]
     public async Task A_valid_plan_is_recorded_with_its_prompt_and_payloads()

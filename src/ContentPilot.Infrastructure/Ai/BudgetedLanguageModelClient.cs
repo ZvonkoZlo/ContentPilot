@@ -54,7 +54,18 @@ public sealed class BudgetedLanguageModelClient(
         if (!response.FromCassette)
         {
             RecordCost(request, response, campaignId);
-            await db.SaveChangesAsync(ct);
+
+            // Deliberately not saved here. AgentExecutor — the only real caller of this
+            // client — is still mid-way through building the AgentRun for this same call
+            // (it archives payloads and records the outcome only after CompleteAsync
+            // returns) on this same shared, scoped DbContext. A save here would flush that
+            // half-built, still-Added AgentRun to Unchanged early; AgentExecutor's later
+            // mutations to it would then hit EF's append-only guard as a Modified entity,
+            // exactly the exception this comment used to be missing. Every path through
+            // AgentExecutor.RunAsync saves right after it finishes mutating the run, so the
+            // CostEntry added here rides along on that save instead — cost entry and run
+            // outcome commit atomically, which is strictly better than the split save this
+            // replaced.
         }
 
         var after = spent + response.CostMicroCents;
