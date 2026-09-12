@@ -18,6 +18,13 @@ ENV ENTRY_DLL=$ENTRY \
     DOTNET_EnableDiagnostics=0 \
     ASPNETCORE_HTTP_PORTS=8080
 
+# The aspnet runtime image ships nothing to probe an HTTP endpoint with — docker-compose's
+# healthcheck for the api service calls wget, which is otherwise absent here and fails the
+# check every time regardless of whether the API itself is healthy.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=build /app .
 
