@@ -75,6 +75,13 @@ cost enforcement 1034, golden test data 1093.
 Layering is enforced by `tests/ContentPilot.ArchitectureTests/LayeringRules.cs`, tenancy by
 `TenantIsolationRules.cs`. A violation fails the build, so do not "just add a reference".
 
+**`frontend/`** — outside the .NET solution and its layering rules entirely: a minimal
+Angular 17 app (standalone components) for exercising the API by hand. Not the Phase 8
+review UI the plan describes — no auth, no design, just every existing endpoint wired to a
+button. `npm install && npm start`, served at `:4200`; needs the API's CORS policy (already
+added, dev-only, `http://localhost:4200`) and reachable at the URL entered in its settings
+bar. See its own `frontend/README.md` and PARALLEL-WORK.md for what it does and does not do.
+
 ## Where things are
 
 **Ports** — `Application/Abstractions/`: `IClock`, `IJobQueue` with `IJobHandler` /

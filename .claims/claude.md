@@ -36,6 +36,7 @@ src/ContentPilot.Infrastructure/Tenancy/
 src/ContentPilot.Infrastructure/Content/
 src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
 src/ContentPilot.Api/Endpoints/AdminEndpoints.cs
+frontend/
 src/ContentPilot.Worker/Program.cs
 tests/ContentPilot.UnitTests/Agents/
 tests/ContentPilot.UnitTests/Ai/
@@ -193,8 +194,14 @@ what cassette-mode evals are honestly for. See PARALLEL-WORK.md for the full cat
 mapping — several rows (VisualQA image scenarios, the judge/human-rated one) are explicitly
 deferred, not forgotten, each with why.
 
-**Not yet built anywhere:** the review UI itself (no frontend exists at all — every endpoint
-above is an API a frontend would call), the weekly email (needs a provider decision), a
-tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide (not just
-per-campaign) QA pass-rate aggregate, the rest of §27's scenario catalogue, the metric
+**A minimal Angular UI now exists** at `frontend/` — per explicit user request, not the
+Phase 8 review UI the plan describes. Triggers campaigns, lists them, shows item detail
+(findings/run tree/agent runs), approve/reject/rate, download. `GET /api/campaigns` (list,
+optional `?brandId=`) and a dev-only CORS policy landed alongside it. See its own
+`frontend/README.md` and PARALLEL-WORK.md.
+
+**Not yet built anywhere:** the real Phase 8 review UI (design, auth, polish — the minimal
+one above proves the API works, nothing more), the weekly email (needs a provider decision),
+a tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide (not
+just per-campaign) QA pass-rate aggregate, the rest of §27's scenario catalogue, the metric
 dashboard, budget recalibration from real campaigns, and a performed backup/restore drill.

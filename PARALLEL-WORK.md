@@ -1279,3 +1279,38 @@ data this session cannot produce.
 394 unit (8 new), 10 architecture, 103 integration (1 new), 1 workflow test green; full
 build clean. (One integration run flagged `JobQueueTests`' own concurrency race test as
 flaky — reran clean in isolation and as part of the full suite; unrelated to this work.)
+
+### A minimal Angular review UI, so the API can be tried by hand (`claude`)
+
+Per explicit user request: a small standalone-components Angular 17 app in `frontend/` —
+not the Phase 8 review UI the plan describes, just enough to trigger a campaign, watch it
+run, and act on it without curl or Postman.
+
+**Backend, first** (own commit): `GET /api/campaigns` (optional `?brandId=`) — only a
+single-campaign `GET` existed before, and the UI's landing page needs a list. A dev-only
+CORS policy for `http://localhost:4200` (`Program.cs`) — `X-Tenant-Id` is a plain header,
+not a credential, per the MVP's stated no-auth scope, so this never needs to widen when real
+auth lands; that replaces the header with a bearer token instead of touching this policy.
+
+**The app** (`frontend/`, `npm install && npm start`, served at :4200): a settings bar
+(API URL / tenant / brand, persisted to `localStorage` — the closest thing to a "login" a
+header-based, no-auth API needs) sits above two routed views:
+
+- **Dashboard** (`/`) — trigger a campaign (`POST /api/campaigns`), list campaigns for the
+  selected brand.
+- **Campaign detail** (`/campaign/:id`) — campaign status + cancel, cost + QA pass-rate
+  summary, the item table, a "build/get ZIP" button, and per-item detail (findings across
+  every gate/attempt, the run tree, agent runs with cost) with **Approve**/**Reject** for
+  anything in `NeedsHumanReview` and a 1–5 rating field. Every action just calls the
+  matching endpoint and re-fetches — no optimistic updates, no design system; the goal was
+  proving the backend works, not building the product's real UI on a smaller budget than it
+  needs.
+
+Verified `ng build` (production bundle, clean) and `ng serve` (dev server, responds 200 on
+:4200) both work. Not verified against a live docker-compose stack with a real API key this
+pass — that is the natural next step for whoever tries this end to end.
+
+394 unit, 10 architecture, 104 integration (1 new — the campaign-list endpoint), 1 workflow
+test green; full build clean. (`JobQueueTests`' own concurrency race test flaked once under
+full-suite load — passes reliably in isolation, three separate reruns confirmed it, unrelated
+to this work.)
