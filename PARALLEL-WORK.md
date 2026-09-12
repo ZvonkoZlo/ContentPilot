@@ -1348,3 +1348,20 @@ running API, not just in isolation. `ng serve` on `:4200` reachable throughout.
 Not yet tried: an actual campaign generated with a real Anthropic key — `Ai:Enabled` is
 still `false` in this machine's `.env` (no key entered), so the pipeline runs but every
 billable step has nothing to call. That is the natural next verification once a key exists.
+
+### A third gap found while verifying: the API healthcheck always failed (`claude`)
+
+`docker compose ps` showed `api` as `Up (unhealthy)` even though the endpoint worked fine
+when curled directly. `docker inspect`'s health log showed why: `wget: not found` on every
+single check — the `aspnet:10.0` runtime base image ships no `wget`, so
+`docker-compose.yml`'s healthcheck (`wget -qO- http://localhost:8080/health`) could never
+succeed regardless of the API's actual state. Fixed in `docker/Dockerfile` (the shared
+image for api/worker/migrate) by installing `wget` in the runtime stage, the same way the
+renderer's own Dockerfile already installs `ffmpeg`/`fontconfig`. Rebuilt and confirmed:
+`api` now reports `Up (healthy)`.
+
+Three real gaps found and fixed purely by actually running the stack rather than only
+testing pieces of it: the missing `Ai:*` env forwarding, this healthcheck, and (in an
+earlier session) `ContentAsset.StorageKey` never pointing at real bytes. Running the whole
+thing end to end, even once, catches a category of bug unit and integration tests structurally
+cannot.
