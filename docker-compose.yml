@@ -16,6 +16,15 @@ x-app-env: &app-env
   ObjectStorage__ForcePathStyle: "true"
   Telemetry__OtlpEndpoint: "http://aspire:18889"
   Renderer__BaseAddress: "http://renderer:8080"
+  # Read from .env (see .env.example) — compose only substitutes these into the values
+  # below, it does not forward arbitrary host environment variables into a container on
+  # its own, so without this line here the key never reaches api/worker regardless of what
+  # is set in .env.
+  Ai__Enabled: "${Ai__Enabled:-false}"
+  Ai__Cassettes: "${Ai__Cassettes:-Off}"
+  Ai__CampaignBudgetMicroCents: "${Ai__CampaignBudgetMicroCents:-200000000}"
+  Ai__Providers__Anthropic__ApiKey: "${Ai__Providers__Anthropic__ApiKey:-}"
+  Ai__Providers__OpenAi__ApiKey: "${Ai__Providers__OpenAi__ApiKey:-}"
 
 services:
   postgres:
