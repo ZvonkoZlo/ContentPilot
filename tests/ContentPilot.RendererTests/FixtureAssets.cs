@@ -110,6 +110,34 @@ public static class FixtureAssets
         return ImagePayload.FromBytes(image.ToByteArray(MagickFormat.Png), "image/png");
     }
 
+    /// <summary>
+    /// A sparse product screen like the first live campaign upload: large flat regions and
+    /// repeated low-contrast rows. DCT hashes are deliberately fragile on this shape because
+    /// many low-frequency coefficients sit close to the median.
+    /// </summary>
+    public static ImagePayload SparseProductScreenshot(uint width = 900, uint height = 1600)
+    {
+        using var image = new MagickImage(MagickColors.White, width, height);
+        var drawables = new Drawables()
+            .FillColor(new MagickColor("#6C4CF1"))
+            .Rectangle(0, 0, width, height / 8.0);
+
+        var rowHeight = height / 10.0;
+
+        for (var row = 0; row < 8; row++)
+        {
+            var top = height / 7.0 + row * rowHeight;
+            drawables.FillColor(new MagickColor("#F4F5F7"))
+                .Rectangle(0, top, width, top + rowHeight * 0.78);
+        }
+
+        drawables.Draw(image);
+        image.Format = MagickFormat.Jpeg;
+        image.Quality = 85;
+
+        return ImagePayload.FromBytes(image.ToByteArray(), "image/jpeg");
+    }
+
     /// <summary>A wordmark with a mark, at a wide aspect so distortion is easy to spot.</summary>
     public static ImagePayload Logo()
     {

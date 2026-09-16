@@ -84,17 +84,20 @@ public sealed class FidelityComparer(ILogger<FidelityComparer> logger)
             using var normalisedCrop = Normalise(crop, crop.Width, crop.Height);
 
             var hashDistance = PerceptualHash.Distance(normalisedReference, normalisedCrop);
-
-            if (hashDistance > thresholds.MaxPerceptualHashDistance)
-            {
-                // Not even the same picture. Nothing finer is worth computing.
-                reasons.Add($"Perceptual hash distance {hashDistance}: the slot holds a different image entirely.");
-
-                return Fail(request.SlotId, reasons, occlusion, aspectDelta, hashDistance, 0, 100, box);
-            }
-
             var ssim = StructuralSimilarity(normalisedReference, normalisedCrop);
             var deltaE = ColorDifference.MeanDeltaE2000(normalisedReference, normalisedCrop);
+
+            // A DCT hash is a useful wrong-picture signal, but sparse UI screenshots have
+            // many low-frequency coefficients close to the median. Browser resampling can
+            // flip those bits even when the pixels are structurally unchanged. Confirm the
+            // hash with the finer structural metric before calling this a different asset.
+            if (hashDistance > thresholds.MaxPerceptualHashDistance &&
+                ssim < thresholds.FailStructuralSimilarity)
+            {
+                reasons.Add($"Perceptual hash distance {hashDistance}: the slot holds a different image entirely.");
+
+                return Fail(request.SlotId, reasons, occlusion, aspectDelta, hashDistance, ssim, deltaE, box);
+            }
 
             var verdict = Decide(ssim, deltaE, thresholds, reasons);
 
@@ -261,8 +264,8 @@ public sealed class FidelityComparer(ILogger<FidelityComparer> logger)
 }
 
 /// <summary>
-/// DCT-based perceptual hash. Used only as a fast pre-filter: it answers "is this even the
-/// same picture" so an obviously wrong asset fails without running finer metrics.
+/// DCT-based perceptual hash. Used as a candidate signal for "is this even the same
+/// picture"; the comparer confirms it with structural similarity before failing an asset.
 /// </summary>
 public static class PerceptualHash
 {

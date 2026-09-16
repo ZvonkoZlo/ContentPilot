@@ -8,7 +8,7 @@ session — all committed and pushed to `main` on
 Read `CLAUDE.md` → `PARALLEL-WORK.md` and claim your paths in `.claims/` before touching
 anything, same as always. This file is a punch list, not a replacement for those.
 
-## 1. The one real product bug still open: screenshot slot never passes QA
+## 1. Fixed 2026-09-16: screenshot slot pHash false positive
 
 Every live campaign so far has every `StaticPost` item end at `NeedsHumanReview` with the
 exact same finding:
@@ -19,6 +19,15 @@ ScreenshotWrongAsset at Validating: quality attempts exhausted (3/3).
 ```
 (threshold is 12 — see `src/ContentPilot.Application/Quality/Checks/FidelityChecks.cs:80-93`)
 
+**Resolved by Codex on `fix-screenshot-wrong-asset`.** The selected `BrandAsset.Id`,
+CreativeSpec payload and rendered pixels were all correct. The live sparse UI screenshot
+measured pHash distance 17 on Linux, but SSIM 0.9955, mean DeltaE 0.05, aspect drift 0.16%
+and zero occlusion. DCT median bits are unstable for sparse, low-frequency screens across
+browser/ImageMagick resampling. `FidelityComparer` now treats pHash as a candidate signal
+and confirms a different asset with the structural failure floor before returning
+`ScreenshotWrongAsset`; the threshold remains 12. A deterministic sparse-UI regression
+fixture fails on the old code and passes with the fix, while the existing wrong-image and
+mutation corpus still fails where expected.
 This is not an infra bug — the pipeline runs cleanly end to end (render, QA, remediation
 loop all execute correctly). It's a real defect somewhere in the screenshot path, and it
 blocks 100% of `StaticPost` items from ever reaching `Approved`.

@@ -48,6 +48,34 @@ public sealed class FidelityTests(RenderFixture fixture)
     }
 
     [RenderFact]
+    public async Task A_sparse_clean_screenshot_is_not_mistaken_for_a_different_asset()
+    {
+        var manifest = fixture.Catalog.Get("feature-highlight").Manifest;
+        var reference = FixtureAssets.SparseProductScreenshot();
+        var sample = SampleRequests.For(manifest, AspectRatio.FourFive);
+        var request = sample with
+        {
+            Assets = new Dictionary<string, ImagePayload>(sample.Assets, StringComparer.Ordinal)
+            {
+                ["screenshot"] = reference,
+            },
+        };
+        var response = await fixture.Renderer.RenderAsync(request, CancellationToken.None);
+
+        var result = fixture.Comparer.Compare(Build(response, reference));
+
+        result.Metrics.PerceptualHashDistance.ShouldBeGreaterThan(
+            FidelityThresholds.Default.MaxPerceptualHashDistance,
+            "the fixture must retain the sparse-image pHash regression shape");
+        result.Metrics.StructuralSimilarity.ShouldBeGreaterThanOrEqualTo(
+            FidelityThresholds.Default.PassStructuralSimilarity,
+            "the finer metric must independently confirm that the pixels are unchanged");
+        result.Verdict.ShouldBe(
+            FidelityVerdict.Pass,
+            $"A clean sparse UI was rejected as a different asset: {string.Join(" ", result.Reasons)}");
+    }
+
+    [RenderFact]
     public async Task A_translucent_overlay_over_the_product_is_caught()
     {
         var (response, reference) = await RenderAsync();
@@ -127,6 +155,10 @@ public sealed class FidelityTests(RenderFixture fixture)
 
         var result = fixture.Comparer.Compare(Build(response, reference, mutated));
 
+        result.Metrics.PerceptualHashDistance.ShouldBeGreaterThan(
+            FidelityThresholds.Default.MaxPerceptualHashDistance);
+        result.Metrics.StructuralSimilarity.ShouldBeLessThan(
+            FidelityThresholds.Default.FailStructuralSimilarity);
         result.Verdict.ShouldBe(FidelityVerdict.Fail);
         result.Reasons.ShouldNotBeEmpty();
     }

@@ -274,7 +274,7 @@ configurations mirror those under `Infrastructure/Persistence/Configurations/`
 **Renderer** — `Engine/` (`BrowserPool`, `DocumentBuilder`, `FontLibrary`,
 `ImageRenderService`, `TemplateCatalog`, `RenderScripts`); `Imaging/` (`FidelityComparer`,
 `PerceptualHash`, `ColorDifference`, `ImageMetrics` → `MaskAnalyzer`, `ContrastAnalyzer`);
-`Templates/Static/`; endpoints in `Endpoints/RenderEndpoints.cs`.
+`Templates/Static/`; endpoints in `Endpoints/RenderEndpoints.cs`. Sparse screenshot fidelity note: `FidelityComparer` confirms a pHash outlier with the structural failure floor before classifying `ScreenshotWrongAsset`; live sparse UI measured pHash 17 but SSIM 0.9955 and is a clean pass.
 
 **Jobs** — `Infrastructure/Jobs/`: `PostgresJobQueue` with `JobQueueOptions`, `Job` /
 `JobState`, `JobDispatcher`, `JobReaper`. Enqueue enlists in the caller's transaction; it

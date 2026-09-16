@@ -1409,3 +1409,31 @@ it planned successfully with a real, novel theme ("Your diary should keep fillin
 are busy cutting hair.") and fanned out into a real `ContentItem`, no exception.
 
 394 unit, 10 architecture, 105 integration (1 new) test green; full build clean.
+### Live `ScreenshotWrongAsset` false positive fixed (`codex`)
+
+Every live `StaticPost` had reached `NeedsHumanReview` with pHash distance 17 against the
+ceiling of 12. Tracing one real item proved the asset-selection path was correct: the same
+`BrandAsset.Id` and identical JPEG payload survived Directing, every CreativeSpec and every
+attempt, and the final render visibly contained that asset.
+
+The failure was the DCT pHash acting as an authoritative early exit. The real sparse UI
+upload has many low-frequency coefficients close to the median, so Linux browser/ImageMagick
+resampling flipped 17 bits even though the finer metrics measured SSIM 0.9955, mean DeltaE
+0.05, aspect drift 0.16% and zero occlusion. `FidelityComparer` now confirms a pHash outlier
+with `FailStructuralSimilarity` before classifying a different asset. The calibrated pHash
+ceiling remains 12; clean high-pHash images proceed through SSIM/DeltaE, while a real wrong
+image still has both high pHash and structural failure.
+
+Added a deterministic sparse-UI JPEG fixture and an end-to-end Chromium regression test.
+The test fails against the old comparer (pHash 33 on this Windows build) and passes with the
+fix; the existing wrong-image test now explicitly proves both the high hash and structural
+failure sides of the guard. The exact saved live source/render/mask tuple was also replayed
+against an isolated Linux image built from the branch: pHash stayed 17 and the verdict
+changed from Fail to Pass.
+
+Validation: solution build clean with 0 warnings; 397 unit and 10 architecture tests pass;
+renderer 36 pass with the existing FFmpeg-path test skipped; workflow smoke 1/1 passes.
+Integration: the 104 non-race tests pass together and the documented
+`JobQueueTests.A_duplicate_key_committed_concurrently_loses_on_the_unique_index` passes in
+isolation; in two full-suite runs that known scheduling flake was the only failure (104/105
+passed each run). No application-owned, frontend, contract or threshold file changed.
