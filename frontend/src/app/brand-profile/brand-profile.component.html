@@ -1,0 +1,207 @@
+@if (!ready()) {
+  <div class="card">Pick a tenant and a brand above to get started.</div>
+} @else {
+  @if (error()) {
+    <div class="card err">{{ error() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="card">Loading…</div>
+  } @else {
+    <div class="card">
+      <h2>Visual identity</h2>
+      @if (!profileFound()) {
+        <p class="hint">This brand has no profile yet — saving will create one.</p>
+      }
+
+      <div class="grid">
+        <label>
+          Primary color
+          <div class="color-row">
+            <input type="color" [(ngModel)]="profile().visual.primaryColor" />
+            <input type="text" [(ngModel)]="profile().visual.primaryColor" />
+          </div>
+        </label>
+        <label>
+          Secondary color
+          <div class="color-row">
+            <input type="color" [ngModel]="profile().visual.secondaryColor || '#000000'"
+                   (ngModelChange)="profile().visual.secondaryColor = $event" />
+            <input type="text" [(ngModel)]="profile().visual.secondaryColor" placeholder="optional" />
+          </div>
+        </label>
+        <label>
+          Accent color
+          <div class="color-row">
+            <input type="color" [ngModel]="profile().visual.accentColor || '#000000'"
+                   (ngModelChange)="profile().visual.accentColor = $event" />
+            <input type="text" [(ngModel)]="profile().visual.accentColor" placeholder="optional" />
+          </div>
+        </label>
+        <label>
+          Dark ground
+          <div class="color-row">
+            <input type="color" [(ngModel)]="profile().visual.darkColor" />
+            <input type="text" [(ngModel)]="profile().visual.darkColor" />
+          </div>
+        </label>
+        <label>
+          Light ground
+          <div class="color-row">
+            <input type="color" [(ngModel)]="profile().visual.lightColor" />
+            <input type="text" [(ngModel)]="profile().visual.lightColor" />
+          </div>
+        </label>
+        <label>
+          Heading font
+          <input type="text" [(ngModel)]="profile().visual.headingFont" />
+        </label>
+        <label>
+          Body font
+          <input type="text" [(ngModel)]="profile().visual.bodyFont" />
+        </label>
+        <label>
+          Corner radius
+          <input type="number" min="0" max="64" [(ngModel)]="profile().visual.cornerRadius" />
+        </label>
+      </div>
+      <label class="wide">
+        Style keywords (comma-separated)
+        <input type="text" [(ngModel)]="styleKeywordsText" placeholder="clean, warm, editorial" />
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Voice</h2>
+      <label class="wide">
+        Summary
+        <textarea rows="2" [(ngModel)]="profile().voice.summary"></textarea>
+      </label>
+      <div class="grid">
+        <label>
+          Traits (comma-separated)
+          <input type="text" [(ngModel)]="traitsText" placeholder="direct, practical, never salesy" />
+        </label>
+        <label>
+          Avoid (comma-separated)
+          <input type="text" [(ngModel)]="avoidText" />
+        </label>
+        <label>
+          Preferred CTA style
+          <input type="text" [ngModel]="profile().voice.preferredCtaStyle"
+                 (ngModelChange)="profile().voice.preferredCtaStyle = $event" />
+        </label>
+        <label>
+          Banned words (comma-separated)
+          <input type="text" [(ngModel)]="bannedWordsText" />
+        </label>
+      </div>
+      <label class="wide">
+        Forbidden claims (comma-separated)
+        <input type="text" [(ngModel)]="forbiddenClaimsText" placeholder="cheapest, guaranteed results" />
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Messaging</h2>
+      <label class="wide">
+        Positioning
+        <textarea rows="2" [(ngModel)]="profile().messaging.positioning"></textarea>
+      </label>
+      <label class="wide">
+        Core promise
+        <input type="text" [ngModel]="profile().messaging.corePromise"
+               (ngModelChange)="profile().messaging.corePromise = $event" />
+      </label>
+      <label class="wide">
+        Principles (comma-separated)
+        <input type="text" [(ngModel)]="principlesText" />
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Operator notes</h2>
+      <label class="wide">
+        <textarea rows="2" [ngModel]="profile().operatorNotes"
+                  (ngModelChange)="profile().operatorNotes = $event"></textarea>
+      </label>
+    </div>
+
+    <div class="card">
+      <button class="primary" (click)="save()" [disabled]="saving()">
+        {{ saving() ? 'Saving…' : 'Save profile' }}
+      </button>
+      @if (saved()) {
+        <span class="ok-msg">Saved.</span>
+      }
+    </div>
+  }
+
+  <div class="card">
+    <h2>
+      Assets
+      <label class="inline">
+        <input type="checkbox" [(ngModel)]="includeArchived" (ngModelChange)="refreshAssets()" />
+        show archived
+      </label>
+    </h2>
+
+    @if (assetsError()) {
+      <p class="err">{{ assetsError() }}</p>
+    }
+
+    <div class="upload-row">
+      <select [(ngModel)]="uploadKind">
+        <option value="ProductScreenshot">Product screenshot</option>
+        <option value="Logo">Logo</option>
+        <option value="Photo">Photo</option>
+        <option value="Background">Background</option>
+        <option value="PriorCreative">Prior creative</option>
+      </select>
+      <input type="file" accept="image/*" (change)="onFileSelected($event)" />
+      <input type="text" [(ngModel)]="uploadDescription" placeholder="description (optional)" />
+      <input type="text" [(ngModel)]="uploadTags" placeholder="tags, comma-separated" />
+      <button class="primary" (click)="upload()" [disabled]="uploading() || !selectedFile">
+        {{ uploading() ? 'Uploading…' : 'Upload' }}
+      </button>
+    </div>
+
+    @if (assetsLoading()) {
+      <p>Loading…</p>
+    } @else if (assets().length === 0) {
+      <p>No assets yet.</p>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th>Kind</th>
+            <th>File</th>
+            <th>Size</th>
+            <th>Dimensions</th>
+            <th>Origin</th>
+            <th>Tags</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (a of assets(); track a.id) {
+            <tr [class.archived]="a.isArchived">
+              <td><span class="badge">{{ a.kind }}</span></td>
+              <td>{{ a.fileName }}</td>
+              <td>{{ formatBytes(a.bytes) }}</td>
+              <td>{{ a.width }}×{{ a.height }}</td>
+              <td>{{ a.origin }}</td>
+              <td>{{ a.tags.join(', ') || '—' }}</td>
+              <td>
+                <button (click)="openAsset(a)">View</button>
+                @if (!a.isArchived) {
+                  <button class="danger" (click)="archive(a)">Archive</button>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </div>
+}

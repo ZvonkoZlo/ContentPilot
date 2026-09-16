@@ -7,6 +7,20 @@ header h1 {
   font-size: 16px;
   margin: 0;
 }
+nav {
+  margin-top: 8px;
+  display: flex;
+  gap: 14px;
+}
+nav a {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 13px;
+}
+nav a:hover {
+  color: white;
+  text-decoration: underline;
+}
 main {
   padding: 20px;
   max-width: 1000px;

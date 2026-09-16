@@ -26,12 +26,13 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>("postgres");
 
-// The minimal review UI (a separate Angular app, dev server on :4200) has no cookie or
-// session story yet — X-Tenant-Id is a plain header, not a credential — so a permissive
-// dev-only CORS policy is enough; this never needs to widen once real auth exists, because
-// that will replace the header with a bearer token instead of touching this policy.
+// The minimal review UI (a separate Angular app, dev server on :4200 or :4400 depending on
+// which port is free locally) has no cookie or session story yet — X-Tenant-Id is a plain
+// header, not a credential — so a permissive dev-only CORS policy is enough; this never
+// needs to widen once real auth exists, because that will replace the header with a bearer
+// token instead of touching this policy.
 builder.Services.AddCors(o => o.AddDefaultPolicy(policy => policy
-    .WithOrigins("http://localhost:4200")
+    .WithOrigins("http://localhost:4200", "http://localhost:4400")
     .AllowAnyMethod()
     .AllowAnyHeader()));
 

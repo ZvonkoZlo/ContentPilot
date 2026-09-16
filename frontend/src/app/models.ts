@@ -110,3 +110,55 @@ export interface CampaignPackage {
   emailSentAt: string | null;
   manifestJson: string;
 }
+
+export interface VisualIdentity {
+  primaryColor: string;
+  secondaryColor: string | null;
+  accentColor: string | null;
+  darkColor: string;
+  lightColor: string;
+  headingFont: string;
+  bodyFont: string;
+  cornerRadius: number;
+  styleKeywords: string[];
+}
+
+export interface ToneOfVoice {
+  summary: string;
+  traits: string[];
+  avoid: string[];
+  preferredCtaStyle: string | null;
+  bannedWords: string[];
+  forbiddenClaims: string[];
+}
+
+export interface Messaging {
+  positioning: string;
+  principles: string[];
+  corePromise: string | null;
+}
+
+export interface BrandProfile {
+  visual: VisualIdentity;
+  voice: ToneOfVoice;
+  messaging: Messaging;
+  operatorNotes: string | null;
+}
+
+export type AssetKind = 'ProductScreenshot' | 'Logo' | 'Photo' | 'Background' | 'PriorCreative';
+
+export interface BrandAsset {
+  id: string;
+  kind: string;
+  fileName: string;
+  mediaType: string;
+  width: number;
+  height: number;
+  bytes: number;
+  origin: string;
+  tags: string[];
+  dominantColors: string[];
+  description: string | null;
+  isArchived: boolean;
+  createdAt: string;
+}

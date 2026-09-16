@@ -3,7 +3,10 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { SettingsService } from './settings.service';
 import {
+  AssetKind,
   Brand,
+  BrandAsset,
+  BrandProfile,
   Campaign,
   CampaignCost,
   CampaignPackage,
@@ -121,6 +124,54 @@ export class ApiService {
 
   getQaPassRate(campaignId: string): Observable<QaPassRate> {
     return this.http.get<QaPassRate>(`${this.base}/api/campaigns/${campaignId}/qa-pass-rate`, {
+      headers: this.headers,
+    });
+  }
+
+  getBrandProfile(brandId: string): Observable<BrandProfile> {
+    return this.http.get<BrandProfile>(`${this.base}/api/brands/${brandId}/profile`, { headers: this.headers });
+  }
+
+  saveBrandProfile(brandId: string, profile: BrandProfile): Observable<BrandProfile> {
+    return this.http.put<BrandProfile>(`${this.base}/api/brands/${brandId}/profile`, profile, {
+      headers: this.headers,
+    });
+  }
+
+  listAssets(brandId: string, includeArchived = false): Observable<BrandAsset[]> {
+    return this.http.get<BrandAsset[]>(
+      `${this.base}/api/brands/${brandId}/assets?includeArchived=${includeArchived}`,
+      { headers: this.headers }
+    );
+  }
+
+  uploadAsset(
+    brandId: string,
+    file: File,
+    kind: AssetKind,
+    description?: string,
+    tags?: string
+  ): Observable<BrandAsset> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('kind', kind);
+    if (description) form.append('description', description);
+    if (tags) form.append('tags', tags);
+    return this.http.post<BrandAsset>(`${this.base}/api/brands/${brandId}/assets`, form, {
+      headers: this.headers,
+    });
+  }
+
+  archiveAsset(brandId: string, assetId: string): Observable<BrandAsset> {
+    return this.http.post<BrandAsset>(
+      `${this.base}/api/brands/${brandId}/assets/${assetId}/archive`,
+      null,
+      { headers: this.headers }
+    );
+  }
+
+  getAssetUrl(brandId: string, assetId: string): Observable<{ url: string }> {
+    return this.http.get<{ url: string }>(`${this.base}/api/brands/${brandId}/assets/${assetId}/url`, {
       headers: this.headers,
     });
   }
