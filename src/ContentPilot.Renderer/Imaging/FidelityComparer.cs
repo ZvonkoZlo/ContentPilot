@@ -221,7 +221,12 @@ public sealed class FidelityComparer(ILogger<FidelityComparer> logger)
     {
         const uint CanonicalWidth = 480;
 
-        var width = Math.Min(targetWidth, CanonicalWidth);
+        // Always resample both sides at least once. When a narrow slot was already below
+        // CanonicalWidth, the reference took ImageMagick's downscale path while Chromium's
+        // crop stayed byte-for-byte at its rendered size. The result then measured the two
+        // resamplers rather than the screenshot, which showed up with real 738x1600 phone
+        // captures in the compact square feature-highlight layout.
+        var width = Math.Min(CanonicalWidth, (uint)Math.Max(1, Math.Round(targetWidth * 0.75)));
         var height = (uint)Math.Max(1, Math.Round(targetHeight * (width / (double)targetWidth)));
 
         var clone = (MagickImage)image.Clone();

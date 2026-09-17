@@ -8,7 +8,7 @@ session — all committed and pushed to `main` on
 Read `CLAUDE.md` → `PARALLEL-WORK.md` and claim your paths in `.claims/` before touching
 anything, same as always. This file is a punch list, not a replacement for those.
 
-## 0. New 2026-09-17: screenshot slots stretch instead of cropping, real screenshots fail `ScreenshotAltered`
+## 0. Fixed 2026-09-17: narrow screenshot slots caused a resampling false positive
 
 The user uploaded Appointso's actual product screenshots (738×1600, portrait, real
 phone-shaped device UI, via `/api/brands/{id}/assets`, `kind=ProductScreenshot`) and reran
@@ -21,32 +21,29 @@ ScreenshotAltered at Validating: quality attempts exhausted (2/3).
 line): a blur, a warp, or a wrong crop."
 ```
 
-**Root cause, found by reading the two templates that declare a `ProductScreenshot` slot:**
+**The initial template diagnosis was disproved by the renderer contract and a before/after
+measurement:**
 
-- `src/ContentPilot.Renderer/Templates/Static/PhoneFloating.razor` — `.pf-screen` (line 131)
-  wraps the screenshot `<img>` (line 31) with no `object-fit` set at all. `.pf-device`'s box
-  is a fixed `aspect-ratio: 9 / 17.5` (≈0.514); a real screenshot's own aspect ratio (0.461
-  for the ones just uploaded) will essentially never match that exactly.
-- `src/ContentPilot.Renderer/Templates/Static/FeatureHighlight.razor` — `.fh-shot` (line 116)
-  wraps its screenshot `<img>` (line 34) the same way: no `object-fit`.
-- With no `object-fit`, the browser's default (`fill`) **stretches** the image to the box's
-  exact dimensions — squashing or stretching every pixel — which is exactly what drives the
-  structural-similarity metric (`FidelityChecks.cs` line ~109) below the pass line.
-- Contrast with the two slots that already do this correctly:
-  `HookOverlay.razor` line 46 (`.ho-bg img { ...; object-fit: cover; }`) and
-  `Testimonial.razor` line 96 (`.ts-photo img { ...; object-fit: cover; }`). Both of those
-  slot kinds (`Background`, `Photo`) never hit this problem because they already crop
-  instead of stretching.
+- `DocumentBuilder.cs` has always emitted `[data-immutable] img { object-fit: contain
+  !important; }`. Both screenshot wrappers have `data-immutable="true"`, so neither used the
+  browser's default `fill`; the source was uniformly scaled and letterboxed.
+- An effective `cover !important` experiment made the first 738×1600
+  `phone-floating/FourFive` case collapse to SSIM 0.653. It cropped immutable product UI and
+  was correctly rejected. Mask occlusion stayed low because crop is not an overlay, showing
+  why `maxOcclusion` alone cannot approve that change.
+- The reproducible failure was `feature-highlight/OneOne`: a clean 738×1600 source produced
+  SSIM 0.938 and `NeedsVisualReview`. Its content box is narrower than the comparer's 480 px
+  canonical cap, so ImageMagick resampled the large reference while Chromium's already-small
+  crop was left at native rendered size. The comparison measured Skia-vs-ImageMagick
+  resampling differences rather than changed screenshot structure.
 
-**Fix:** add `object-fit: cover;` (matching the pattern in the two working templates) to
-`.fh-shot img` and `.pf-screen img`. Since both slots are `"immutable": true` in their
-manifests (`feature-highlight.manifest.json`, `phone-floating.manifest.json`) — meaning the
-UI itself must never be edited or covered — verify with the actual uploaded screenshots that
-`cover`'s crop doesn't clip meaningful UI chrome (a status bar, a critical button) enough to
-trip the `maxOcclusion: 0.02` budget on those manifests; if it does, the box's `aspect-ratio`
-may need loosening instead of (or in addition to) the CSS fix, so the crop has less to do.
-Add a renderer regression test with a screenshot whose aspect ratio deliberately does not
-match the box, asserting the fidelity check now passes.
+**Fix:** `FidelityComparer.Normalise` now always resamples both sides once, using 75% of the
+rendered crop width capped at 480 px. No threshold or template/manifest changed. A focused
+738×1600 regression covers both immutable templates at every supported output ratio and
+asserts fidelity, aspect and the declared 2% occlusion budget. It fails before the comparer
+change and passes after it. The full calibration corpus remains separated: 20/20 clean
+renders pass (worst SSIM 0.9773), while all 100 injected overlay/blur/squash/scrim/wrong-image
+defects remain non-Pass.
 
 ## 1. Fixed 2026-09-16: screenshot slot pHash false positive
 

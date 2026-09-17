@@ -76,6 +76,39 @@ public sealed class FidelityTests(RenderFixture fixture)
     }
 
     [RenderFact]
+    public async Task A_real_phone_aspect_screenshot_is_uniformly_scaled_in_every_immutable_slot()
+    {
+        foreach (var templateId in new[] { "phone-floating", "feature-highlight" })
+        {
+            var manifest = fixture.Catalog.Get(templateId).Manifest;
+
+            foreach (var ratio in manifest.AspectRatios)
+            {
+                var reference = FixtureAssets.ProductScreenshot(738, 1600);
+                var sample = SampleRequests.For(manifest, ratio);
+                var request = sample with
+                {
+                    Assets = new Dictionary<string, ImagePayload>(sample.Assets, StringComparer.Ordinal)
+                    {
+                        ["screenshot"] = reference,
+                    },
+                };
+
+                var response = await fixture.Renderer.RenderAsync(request, CancellationToken.None);
+                var result = fixture.Comparer.Compare(Build(response, reference));
+                var screenshotSlot = manifest.FindAssetSlot("screenshot")!;
+
+                result.Metrics.Occlusion.ShouldBeLessThanOrEqualTo(screenshotSlot.MaxOcclusion,
+                    $"{templateId}/{ratio} exceeded the immutable slot occlusion budget");
+                result.Metrics.AspectDelta.ShouldBeLessThanOrEqualTo(FidelityThresholds.Default.MaxAspectDelta,
+                    $"{templateId}/{ratio} distorted a 738x1600 screenshot");
+                result.Verdict.ShouldBe(FidelityVerdict.Pass,
+                    $"{templateId}/{ratio} rejected a clean 738x1600 screenshot: {string.Join(" ", result.Reasons)}");
+            }
+        }
+    }
+
+    [RenderFact]
     public async Task A_translucent_overlay_over_the_product_is_caught()
     {
         var (response, reference) = await RenderAsync();

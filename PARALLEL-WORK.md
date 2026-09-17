@@ -1487,3 +1487,25 @@ recall or false positives. Carousel continuity remains blocked by the absent car
 workflow execution path. Live cost/budget calibration remains the user's observed-data task;
 the existing campaign cost/QA summaries and eval trend endpoint are sufficient to collect the
 first ten campaigns, so no speculative weekly aggregation API was added.
+
+### Real phone screenshot `ScreenshotAltered` false positive (`codex`, 2026-09-17)
+
+The reported CSS diagnosis did not match the renderer that actually ships:
+`DocumentBuilder` globally forces `object-fit: contain !important` for every immutable image,
+so `PhoneFloating` and `FeatureHighlight` never used the browser's stretching default. A
+measured `cover !important` experiment cropped the 738×1600 source and dropped the first case
+to SSIM 0.653; mask occlusion could not see content removed by crop, so the proposed 2%
+occlusion check was not a sufficient safety condition.
+
+The focused pre-fix regression instead reproduced `feature-highlight/OneOne` at SSIM 0.938.
+The rendered content was narrower than the 480 px canonical comparison cap: ImageMagick
+downscaled the reference, while Chromium's already-small crop received no second resample.
+`FidelityComparer.Normalise` now sends both through one common 75% downsample (still capped at
+480 px), preserving the existing uniform-scale/contain contract and every threshold.
+
+The 738×1600 regression covers both templates at all supported ratios and checks verdict,
+aspect drift and manifest occlusion. It fails before and passes after the comparer change.
+Fidelity tests pass 10/10. The 140-case calibration corpus also stays separated: all 20 clean
+renders pass (worst SSIM 0.9773), while all 100 injected defects remain caught, including 5%
+squash, blur, scrims and wrong images. No static template or manifest needed a production
+change.
