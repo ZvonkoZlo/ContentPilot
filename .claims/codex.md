@@ -1,35 +1,35 @@
 ---
 agent: codex
-phase: brand-review-ui
-branch: todo-brand-review-ui
-status: done
-migrations: false
+phase: phase-8-weekly-email
+branch: phase-8-weekly-email
+status: active
+migrations: true
 updated: 2026-09-17
 ---
 
 ## paths
 
-frontend/
-src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
-src/ContentPilot.Api/Endpoints/AdminEndpoints.cs
-src/ContentPilot.Application/Evals/
+src/ContentPilot.Domain/Branding/Brand.cs
+src/ContentPilot.Application/Abstractions/
+src/ContentPilot.Infrastructure/Email/
+src/ContentPilot.Infrastructure/Jobs/CampaignWorkflowJobHandler.cs
+src/ContentPilot.Infrastructure/Persistence/Configurations/BrandBrainConfigurations.cs
+src/ContentPilot.Infrastructure/Persistence/Migrations/
+src/ContentPilot.Infrastructure/ContentPilot.Infrastructure.csproj
+src/ContentPilot.Api/Endpoints/BrandEndpoints.cs
+src/ContentPilot.Api/appsettings.json
+src/ContentPilot.Worker/appsettings.json
+tests/ContentPilot.UnitTests/Email/
+tests/ContentPilot.IntegrationTests/CampaignWorkflowJobHandlerTests.cs
 tests/ContentPilot.IntegrationTests/ApiEndpointTests.cs
-tests/ContentPilot.IntegrationTests/AdminEndpointTests.cs
-tests/ContentPilot.IntegrationTests/EvalPersistenceTests.cs
-tests/ContentPilot.UnitTests/Evals/
+.env.example
+docker-compose.yml
+TODO-NEXT.md
+AGENT-MAP.md
+PARALLEL-WORK.md
 
 ## notes
 
-Implement the remaining `TODO-NEXT.md` frontend work: Brand Brain personas, product facts
-and content preferences, followed by rendered-image preview and campaign-list cost/QA
-summaries. The review found that item detail exposes no rendered asset URL, so the claim also
-covers one campaign image-URL endpoint and its integration coverage.
-Phase 9 follow-up adds read-only eval trends to the existing admin endpoint and exposes the
-existing dead-job/stuck-run/eval data in the minimal Angular operator UI.
-The eval catalogue follow-up adds the remaining buildable deterministic §27 scenario for
-legal template/asset selection and keeps catalogue persistence coverage in sync.
-
-Merged to `main` through `f74a5bd` on 2026-09-17. Brand Brain UI, render preview,
-campaign cost/QA summaries, operator/eval trend UI, the image URL endpoint, and the fourth
-deterministic eval scenario are complete. See `TODO-NEXT.md` and `PARALLEL-WORK.md` for the
-external inputs still required by labelled/live evals, carousel execution and weekly email.
+Implement Phase 8 weekly campaign notification email with per-brand recipients, SMTP/STARTTLS
+configuration, completion-time delivery, once-only EmailSentAt tracking, and automated coverage.
+The claim owns migrations for the new Brand notification recipient field.
