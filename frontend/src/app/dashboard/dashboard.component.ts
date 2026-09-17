@@ -5,6 +5,13 @@ import { RouterLink } from '@angular/router';
 import { ApiService } from '../api.service';
 import { SettingsService } from '../settings.service';
 import { Campaign } from '../models';
+import { CampaignCost, QaPassRate } from '../models';
+import { catchError, forkJoin, of } from 'rxjs';
+
+interface CampaignMetrics {
+  cost: CampaignCost | null;
+  qaPassRate: QaPassRate | null;
+}
 
 @Component({
   selector: 'app-dashboard',
@@ -18,6 +25,7 @@ export class DashboardComponent {
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
   readonly triggering = signal(false);
+  readonly campaignMetrics = signal<Record<string, CampaignMetrics>>({});
 
   readonly brandId = computed(() => this.settings.settings().brandId);
   readonly ready = computed(() => !!this.settings.settings().tenantId && !!this.brandId());
@@ -41,6 +49,7 @@ export class DashboardComponent {
     this.api.listCampaigns(this.brandId() || undefined).subscribe({
       next: (campaigns) => {
         this.campaigns.set(campaigns);
+        this.loadCampaignMetrics(campaigns);
         this.loading.set(false);
       },
       error: () => {
@@ -48,6 +57,27 @@ export class DashboardComponent {
         this.loading.set(false);
       },
     });
+  }
+
+  private loadCampaignMetrics(campaigns: Campaign[]): void {
+    this.campaignMetrics.set({});
+    if (campaigns.length === 0) return;
+
+    const requests = Object.fromEntries(
+      campaigns.map((campaign) => [
+        campaign.id,
+        forkJoin({
+          cost: this.api.getCost(campaign.id).pipe(catchError(() => of(null))),
+          qaPassRate: this.api.getQaPassRate(campaign.id).pipe(catchError(() => of(null))),
+        }),
+      ])
+    );
+
+    forkJoin(requests).subscribe((metrics) => this.campaignMetrics.set(metrics));
+  }
+
+  formatCents(microCents: number): string {
+    return `$${(microCents / 100_000_000).toFixed(4)}`;
   }
 
   trigger(): void {

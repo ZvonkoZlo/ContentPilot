@@ -35,6 +35,8 @@
             <th>Trigger</th>
             <th>Status</th>
             <th>Theme</th>
+            <th>Cost</th>
+            <th>First-pass QA</th>
             <th></th>
           </tr>
         </thead>
@@ -45,6 +47,16 @@
               <td>{{ c.trigger }}</td>
               <td><span class="badge" [ngClass]="statusClass(c.status)">{{ c.status }}</span></td>
               <td>{{ c.theme || '—' }}</td>
+              @if (campaignMetrics()[c.id]; as metrics) {
+                <td>{{ metrics.cost ? formatCents(metrics.cost.totalMicroCents) : 'n/a' }}</td>
+                <td>
+                  {{ metrics.qaPassRate?.firstAttemptPassRate == null
+                    ? 'n/a'
+                    : (metrics.qaPassRate!.firstAttemptPassRate! * 100).toFixed(0) + '%' }}
+                </td>
+              } @else {
+                <td>…</td><td>…</td>
+              }
               <td><a [routerLink]="['/campaign', c.id]">Open</a></td>
             </tr>
           }

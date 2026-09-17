@@ -20,6 +20,9 @@ export class CampaignDetailComponent {
   readonly cost = signal<CampaignCost | null>(null);
   readonly qaPassRate = signal<QaPassRate | null>(null);
   readonly selectedItem = signal<ItemDetail | null>(null);
+  readonly itemImageUrl = signal<string | null>(null);
+  readonly itemImageLoading = signal(false);
+  readonly itemImageUnavailable = signal(false);
   readonly error = signal<string | null>(null);
   readonly downloadUrl = signal<string | null>(null);
   readonly busy = signal(false);
@@ -49,14 +52,30 @@ export class CampaignDetailComponent {
   }
 
   openItem(itemId: string): void {
+    this.itemImageUrl.set(null);
+    this.itemImageUnavailable.set(false);
+    this.itemImageLoading.set(true);
     this.api.getItem(this.campaignId, itemId).subscribe({
       next: (detail) => this.selectedItem.set(detail),
       error: () => this.error.set('Could not load item detail.'),
+    });
+    this.api.getItemImage(this.campaignId, itemId).subscribe({
+      next: (image) => {
+        this.itemImageUrl.set(image.url);
+        this.itemImageLoading.set(false);
+      },
+      error: () => {
+        this.itemImageUnavailable.set(true);
+        this.itemImageLoading.set(false);
+      },
     });
   }
 
   closeItem(): void {
     this.selectedItem.set(null);
+    this.itemImageUrl.set(null);
+    this.itemImageLoading.set(false);
+    this.itemImageUnavailable.set(false);
     this.rejectReason = '';
   }
 

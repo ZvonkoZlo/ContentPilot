@@ -612,6 +612,55 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     }
 
     [DockerFact]
+    public async Task Item_image_returns_the_promoted_asset_without_crossing_campaigns()
+    {
+        var firstTrigger = await _client.PostAsJsonAsync(
+            "/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 6, 28) });
+        var firstCampaign = await firstTrigger.Content.ReadFromJsonAsync<CampaignDto>();
+        var secondTrigger = await _client.PostAsJsonAsync(
+            "/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 7, 5) });
+        var secondCampaign = await secondTrigger.Content.ReadFromJsonAsync<CampaignDto>();
+
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var store = scope.ServiceProvider.GetRequiredService<IObjectStore>();
+        scope.ServiceProvider.GetRequiredService<IMutableTenantContext>().SetTenant(_tenantId);
+
+        var item = new ContentItem(
+            _tenantId, firstCampaign!.Id, ContentItemType.StaticPost, "Preview this render",
+            "feature-highlight", "Show the image.", DayOfWeek.Monday, 1);
+        db.ContentItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var key = ObjectKey.ForTenant(_tenantId, $"runs/{item.Id:N}/attempts/1/preview.png");
+        await using (var content = new MemoryStream([1, 2, 3]))
+        {
+            await store.PutAsync(key, content, "image/png", default);
+        }
+
+        var asset = new ContentAsset(
+            _tenantId, item.Id, 1, ContentAssetKind.Image, key, "image/png", "preview-hash", 3,
+            DateTimeOffset.UtcNow, 600, 750);
+        db.ContentAssets.Add(asset);
+        await db.SaveChangesAsync();
+        item.PromoteBestAttempt(asset.Id);
+        await db.SaveChangesAsync();
+
+        var response = await _client.GetAsync($"/api/campaigns/{firstCampaign.Id}/items/{item.Id}/image");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var image = await response.Content.ReadFromJsonAsync<ItemImageDto>();
+        image!.Url.ShouldNotBeNullOrWhiteSpace();
+        image.MediaType.ShouldBe("image/png");
+        image.Width.ShouldBe(600);
+        image.Height.ShouldBe(750);
+
+        var wrongCampaign = await _client.GetAsync(
+            $"/api/campaigns/{secondCampaign!.Id}/items/{item.Id}/image");
+        wrongCampaign.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [DockerFact]
     public async Task An_unknown_item_has_no_detail_to_read()
     {
         var trigger = await _client.PostAsJsonAsync("/api/campaigns", new { brandId = _brandId, weekStart = new DateOnly(2032, 6, 21) });
@@ -625,6 +674,8 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     private sealed record CampaignDto(Guid Id, Guid BrandId, string Status);
 
     private sealed record ItemDto(Guid Id, string Topic);
+
+    private sealed record ItemImageDto(string Url, string MediaType, int Width, int Height);
 
     private sealed record RatingDto(Guid ContentItemId, int Score, string? Note, DateTimeOffset RatedAt);
 

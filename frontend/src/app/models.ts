@@ -80,6 +80,13 @@ export interface ItemDetail extends ContentItemSummary {
   agentRuns: ItemAgentRun[];
 }
 
+export interface ItemImage {
+  url: string;
+  mediaType: string;
+  width: number;
+  height: number;
+}
+
 export interface QaPassRate {
   totalItems: number;
   terminalItems: number;
@@ -143,6 +150,57 @@ export interface BrandProfile {
   voice: ToneOfVoice;
   messaging: Messaging;
   operatorNotes: string | null;
+}
+
+export type FactCategory = 'Feature' | 'Pricing' | 'Integration' | 'Availability' | 'Outcome' | 'Company';
+
+export interface ProductFact {
+  id: string;
+  key: string;
+  statement: string;
+  category: FactCategory;
+  evidence: string | null;
+  isPublic: boolean;
+  validFrom: string | null;
+  validTo: string | null;
+}
+
+export interface PersonaDetail {
+  pains: string[];
+  goals: string[];
+  objections: string[];
+  vocabulary: string[];
+  context: string | null;
+}
+
+export interface AudiencePersona {
+  id: string;
+  name: string;
+  segment: string;
+  isPrimary: boolean;
+  detail: PersonaDetail;
+}
+
+export type WeekDay =
+  | 'Sunday'
+  | 'Monday'
+  | 'Tuesday'
+  | 'Wednesday'
+  | 'Thursday'
+  | 'Friday'
+  | 'Saturday';
+
+export interface ContentPreferences {
+  postsPerWeek: number;
+  carouselsPerWeek: number;
+  reelsPerWeek: number;
+  totalPerWeek: number;
+  excludedTopics: string[];
+  preferredTopics: string[];
+  publishDays: WeekDay[];
+  generationDay: WeekDay;
+  generationTime: string;
+  scheduledGenerationEnabled: boolean;
 }
 
 export type AssetKind = 'ProductScreenshot' | 'Logo' | 'Photo' | 'Background' | 'PriorCreative';

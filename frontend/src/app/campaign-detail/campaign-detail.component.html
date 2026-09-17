@@ -88,6 +88,20 @@
       <p class="err">{{ item.failureReason }}</p>
     }
 
+    <div class="preview">
+      @if (itemImageLoading()) {
+        <p>Loading rendered image…</p>
+      } @else {
+        @if (itemImageUrl(); as imageUrl) {
+          <a [href]="imageUrl" target="_blank" rel="noopener" title="Open the full-size render">
+            <img [src]="imageUrl" [alt]="'Rendered output for ' + item.topic" />
+          </a>
+        } @else if (itemImageUnavailable()) {
+          <p class="hint">No rendered image is available for this item.</p>
+        }
+      }
+    </div>
+
     @if (item.status === 'NeedsHumanReview') {
       <div class="review-actions">
         <button class="primary" (click)="approve(item.id)" [disabled]="busy()">Approve</button>

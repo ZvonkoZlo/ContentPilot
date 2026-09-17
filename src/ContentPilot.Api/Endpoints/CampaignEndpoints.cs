@@ -151,6 +151,42 @@ public static class CampaignEndpoints
             "attempt, its workflow step history, and every model call that ran against it — " +
             "§23's \"the run tree is a genuine feature, not just an internal tool.\"");
 
+        group.MapGet("/{id:guid}/items/{itemId:guid}/image", async (
+            Guid id, Guid itemId, AppDbContext db, IObjectStore store, CancellationToken ct) =>
+        {
+            var item = await db.ContentItems.AsNoTracking()
+                .FirstOrDefaultAsync(i => i.Id == itemId && i.CampaignId == id, ct);
+
+            if (item is null)
+            {
+                return Results.NotFound(new { detail = $"No item '{itemId}' in campaign '{id}'." });
+            }
+
+            ContentAsset? asset = null;
+
+            if (item.BestAssetId is { } bestAssetId)
+            {
+                asset = await db.ContentAssets.AsNoTracking()
+                    .FirstOrDefaultAsync(a => a.Id == bestAssetId && a.ContentItemId == item.Id, ct);
+            }
+
+            asset ??= await db.ContentAssets.AsNoTracking()
+                .Where(a => a.ContentItemId == item.Id && a.Kind == ContentAssetKind.Image)
+                .OrderByDescending(a => a.Attempt)
+                .FirstOrDefaultAsync(ct);
+
+            if (asset is null)
+            {
+                return Results.NotFound(new { detail = "This item has no rendered image yet." });
+            }
+
+            var url = await store.GetPresignedReadUrlAsync(
+                ObjectKey.FromExisting(asset.StorageKey), TimeSpan.FromMinutes(15), ct);
+
+            return Results.Ok(new ItemImageResponse(url.ToString(), asset.MediaType, asset.Width, asset.Height));
+        })
+        .WithSummary("Returns a short-lived URL for the promoted or latest rendered image shown by the review UI.");
+
         group.MapPost("/{id:guid}/cancel", async (Guid id, AppDbContext db, IUnitOfWork uow, IClock clock, CancellationToken ct) =>
         {
             var campaign = await db.ContentCampaigns.FirstOrDefaultAsync(c => c.Id == id, ct);
@@ -465,6 +501,8 @@ public sealed record ItemFindingResponse(string Code, string Severity, string? S
 public sealed record ItemStepResponse(string StepName, int Attempt, string Outcome, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt, string? Error);
 
 public sealed record ItemAgentRunResponse(string AgentName, int Attempt, string ModelId, string Outcome, long CostMicroCents, int DurationMs, DateTimeOffset StartedAt);
+
+public sealed record ItemImageResponse(string Url, string MediaType, int Width, int Height);
 
 public sealed record RateItemRequest(int Score, string? Note);
 

@@ -4,14 +4,20 @@ import { Observable } from 'rxjs';
 import { SettingsService } from './settings.service';
 import {
   AssetKind,
+  AudiencePersona,
   Brand,
   BrandAsset,
   BrandProfile,
   Campaign,
   CampaignCost,
   CampaignPackage,
+  ContentPreferences,
   ContentItemSummary,
   ItemDetail,
+  ItemImage,
+  FactCategory,
+  PersonaDetail,
+  ProductFact,
   QaPassRate,
   Tenant,
 } from './models';
@@ -78,6 +84,12 @@ export class ApiService {
     });
   }
 
+  getItemImage(campaignId: string, itemId: string): Observable<ItemImage> {
+    return this.http.get<ItemImage>(`${this.base}/api/campaigns/${campaignId}/items/${itemId}/image`, {
+      headers: this.headers,
+    });
+  }
+
   approveItem(campaignId: string, itemId: string): Observable<ContentItemSummary> {
     return this.http.post<ContentItemSummary>(
       `${this.base}/api/campaigns/${campaignId}/items/${itemId}/approve`,
@@ -130,6 +142,60 @@ export class ApiService {
 
   getBrandProfile(brandId: string): Observable<BrandProfile> {
     return this.http.get<BrandProfile>(`${this.base}/api/brands/${brandId}/profile`, { headers: this.headers });
+  }
+
+  listFacts(brandId: string): Observable<ProductFact[]> {
+    return this.http.get<ProductFact[]>(`${this.base}/api/brands/${brandId}/facts`, { headers: this.headers });
+  }
+
+  addFact(
+    brandId: string,
+    fact: {
+      key: string;
+      statement: string;
+      category: FactCategory;
+      evidence: string | null;
+      isPublic: boolean;
+      validFrom: string | null;
+      validTo: string | null;
+    }
+  ): Observable<ProductFact> {
+    return this.http.post<ProductFact>(`${this.base}/api/brands/${brandId}/facts`, fact, {
+      headers: this.headers,
+    });
+  }
+
+  deleteFact(brandId: string, factId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/api/brands/${brandId}/facts/${factId}`, {
+      headers: this.headers,
+    });
+  }
+
+  listPersonas(brandId: string): Observable<AudiencePersona[]> {
+    return this.http.get<AudiencePersona[]>(`${this.base}/api/brands/${brandId}/personas`, {
+      headers: this.headers,
+    });
+  }
+
+  addPersona(
+    brandId: string,
+    persona: { name: string; segment: string; detail: PersonaDetail; isPrimary: boolean }
+  ): Observable<AudiencePersona> {
+    return this.http.post<AudiencePersona>(`${this.base}/api/brands/${brandId}/personas`, persona, {
+      headers: this.headers,
+    });
+  }
+
+  getPreferences(brandId: string): Observable<ContentPreferences> {
+    return this.http.get<ContentPreferences>(`${this.base}/api/brands/${brandId}/preferences`, {
+      headers: this.headers,
+    });
+  }
+
+  savePreferences(brandId: string, preferences: Omit<ContentPreferences, 'totalPerWeek'>): Observable<ContentPreferences> {
+    return this.http.put<ContentPreferences>(`${this.base}/api/brands/${brandId}/preferences`, preferences, {
+      headers: this.headers,
+    });
   }
 
   saveBrandProfile(brandId: string, profile: BrandProfile): Observable<BrandProfile> {

@@ -138,6 +138,168 @@
   }
 
   <div class="card">
+    <h2>Audience personas</h2>
+    <p class="hint">Describe real people and the language they use. The strategist uses the primary persona by default.</p>
+
+    @if (personasError()) {
+      <p class="err">{{ personasError() }}</p>
+    }
+
+    @if (personasLoading()) {
+      <p>Loading…</p>
+    } @else if (personas().length === 0) {
+      <p>No personas yet.</p>
+    } @else {
+      <div class="record-grid">
+        @for (persona of personas(); track persona.id) {
+          <article class="record">
+            <h3>
+              {{ persona.name }}
+              @if (persona.isPrimary) { <span class="badge ok">Primary</span> }
+            </h3>
+            <p><strong>Segment:</strong> {{ persona.segment }}</p>
+            @if (persona.detail.context) { <p>{{ persona.detail.context }}</p> }
+            <dl>
+              <dt>Pains</dt><dd>{{ persona.detail.pains.join(', ') || '—' }}</dd>
+              <dt>Goals</dt><dd>{{ persona.detail.goals.join(', ') || '—' }}</dd>
+              <dt>Objections</dt><dd>{{ persona.detail.objections.join(', ') || '—' }}</dd>
+              <dt>Vocabulary</dt><dd>{{ persona.detail.vocabulary.join(', ') || '—' }}</dd>
+            </dl>
+          </article>
+        }
+      </div>
+    }
+
+    <h3>Add persona</h3>
+    <div class="grid">
+      <label>Name <input type="text" maxlength="120" [(ngModel)]="personaName" /></label>
+      <label>Segment <input type="text" maxlength="160" [(ngModel)]="personaSegment" /></label>
+      <label>Pains (comma-separated) <input type="text" [(ngModel)]="personaPains" /></label>
+      <label>Goals (comma-separated) <input type="text" [(ngModel)]="personaGoals" /></label>
+      <label>Objections (comma-separated) <input type="text" [(ngModel)]="personaObjections" /></label>
+      <label>Vocabulary (comma-separated) <input type="text" [(ngModel)]="personaVocabulary" /></label>
+    </div>
+    <label class="wide">Context <textarea rows="2" [(ngModel)]="personaContext"></textarea></label>
+    <label class="inline">
+      <input type="checkbox" [(ngModel)]="personaIsPrimary" /> Make this the primary persona
+    </label>
+    <button class="primary" (click)="addPersona()"
+            [disabled]="addingPersona() || !personaName.trim() || !personaSegment.trim()">
+      {{ addingPersona() ? 'Adding…' : 'Add persona' }}
+    </button>
+  </div>
+
+  <div class="card">
+    <h2>Product facts</h2>
+    <p class="hint">Copy must cite these facts. Keys are stable and cannot be renamed after creation.</p>
+
+    @if (factsError()) {
+      <p class="err">{{ factsError() }}</p>
+    }
+
+    @if (factsLoading()) {
+      <p>Loading…</p>
+    } @else if (facts().length === 0) {
+      <p>No product facts yet.</p>
+    } @else {
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Key</th><th>Statement</th><th>Category</th><th>Evidence</th><th>Validity</th><th></th></tr>
+          </thead>
+          <tbody>
+            @for (fact of facts(); track fact.id) {
+              <tr [class.muted]="!fact.isPublic">
+                <td><code>{{ fact.key }}</code></td>
+                <td>{{ fact.statement }}</td>
+                <td><span class="badge">{{ fact.category }}</span></td>
+                <td>{{ fact.evidence || '—' }}</td>
+                <td>
+                  @if (fact.validFrom || fact.validTo) {
+                    {{ fact.validFrom ? (fact.validFrom | date: 'mediumDate') : 'any time' }} –
+                    {{ fact.validTo ? (fact.validTo | date: 'mediumDate') : 'ongoing' }}
+                  } @else { Always }
+                </td>
+                <td><button class="danger" (click)="deleteFact(fact)">Delete</button></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    <h3>Add fact</h3>
+    <div class="grid">
+      <label>
+        Stable key
+        <input type="text" maxlength="80" pattern="[a-z0-9-]+" [(ngModel)]="factKey"
+               placeholder="whatsapp-reminders" />
+      </label>
+      <label>
+        Category
+        <select [(ngModel)]="factCategory">
+          @for (category of ['Feature', 'Pricing', 'Integration', 'Availability', 'Outcome', 'Company']; track category) {
+            <option [value]="category">{{ category }}</option>
+          }
+        </select>
+      </label>
+      <label>Evidence <input type="text" maxlength="500" [(ngModel)]="factEvidence" /></label>
+      <label>Valid from <input type="datetime-local" [(ngModel)]="factValidFrom" /></label>
+      <label>Valid to <input type="datetime-local" [(ngModel)]="factValidTo" /></label>
+    </div>
+    <label class="wide">Statement <textarea rows="2" maxlength="600" [(ngModel)]="factStatement"></textarea></label>
+    <label class="inline"><input type="checkbox" [(ngModel)]="factIsPublic" /> Public and usable in copy</label>
+    <button class="primary" (click)="addFact()"
+            [disabled]="addingFact() || !factKey.trim() || !factStatement.trim()">
+      {{ addingFact() ? 'Adding…' : 'Add fact' }}
+    </button>
+  </div>
+
+  <div class="card">
+    <h2>Content preferences</h2>
+    @if (!preferencesFound() && !preferencesLoading()) {
+      <p class="hint">This brand has no preferences yet — saving will create the defaults shown here.</p>
+    }
+    @if (preferencesError()) {
+      <p class="err">{{ preferencesError() }}</p>
+    }
+
+    @if (preferencesLoading()) {
+      <p>Loading…</p>
+    } @else {
+      <div class="grid">
+        <label>Static posts / week <input type="number" min="0" max="14" [(ngModel)]="preferences().postsPerWeek" /></label>
+        <label>Carousels / week <input type="number" min="0" max="7" [(ngModel)]="preferences().carouselsPerWeek" /></label>
+        <label>Reels / week <input type="number" min="0" max="7" [(ngModel)]="preferences().reelsPerWeek" /></label>
+        <label>
+          Generation day
+          <select [(ngModel)]="preferences().generationDay">
+            @for (day of weekDays; track day) { <option [value]="day">{{ day }}</option> }
+          </select>
+        </label>
+        <label>Generation time <input type="time" [(ngModel)]="preferences().generationTime" /></label>
+      </div>
+      <label class="wide">Preferred topics (comma-separated) <input type="text" [(ngModel)]="preferredTopicsText" /></label>
+      <label class="wide">Excluded topics (comma-separated) <input type="text" [(ngModel)]="excludedTopicsText" /></label>
+      <fieldset>
+        <legend>Publish days</legend>
+        <div class="day-options">
+          @for (day of weekDays; track day) {
+            <label class="inline"><input type="checkbox" [(ngModel)]="publishDaySelection[day]" /> {{ day }}</label>
+          }
+        </div>
+      </fieldset>
+      <label class="inline">
+        <input type="checkbox" [(ngModel)]="preferences().scheduledGenerationEnabled" /> Enable scheduled generation
+      </label>
+      <button class="primary" (click)="savePreferences()" [disabled]="preferencesSaving()">
+        {{ preferencesSaving() ? 'Saving…' : 'Save preferences' }}
+      </button>
+      @if (preferencesSaved()) { <span class="ok-msg">Saved.</span> }
+    }
+  </div>
+
+  <div class="card">
     <h2>
       Assets
       <label class="inline">

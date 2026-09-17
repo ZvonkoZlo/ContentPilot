@@ -64,3 +64,46 @@ textarea {
 tr.archived {
   opacity: 0.5;
 }
+.record-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 12px 0 20px;
+}
+.record {
+  border: 1px solid #e0e3e6;
+  border-radius: 6px;
+  padding: 12px;
+}
+.record h3 {
+  margin: 0 0 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.record p {
+  margin: 5px 0;
+  font-size: 13px;
+}
+.record dl {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 8px;
+  margin-bottom: 0;
+  font-size: 12px;
+}
+.record dt { font-weight: 600; }
+.record dd { margin: 0; }
+.table-scroll { overflow-x: auto; }
+tr.muted { opacity: 0.55; }
+code { white-space: nowrap; }
+fieldset {
+  border: 1px solid #e0e3e6;
+  border-radius: 6px;
+  margin: 12px 0;
+}
+.day-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
