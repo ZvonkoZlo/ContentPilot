@@ -52,7 +52,8 @@ public sealed class ContentPilotFixture : IAsyncLifetime
             .WithPassword("contentpilot")
             .Build();
 
-        _minio = new MinioBuilder("minio/minio:latest").Build();
+        // Docker Hub's minio/minio repo was pulled/restricted; quay.io is MinIO's own current home.
+        _minio = new MinioBuilder("quay.io/minio/minio:latest").Build();
 
         await Task.WhenAll(_postgres.StartAsync(), _minio.StartAsync());
 
