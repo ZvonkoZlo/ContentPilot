@@ -2,7 +2,7 @@
 agent: codex
 phase: brand-review-ui
 branch: todo-brand-review-ui
-status: active
+status: done
 migrations: false
 updated: 2026-09-17
 ---
@@ -28,3 +28,8 @@ Phase 9 follow-up adds read-only eval trends to the existing admin endpoint and 
 existing dead-job/stuck-run/eval data in the minimal Angular operator UI.
 The eval catalogue follow-up adds the remaining buildable deterministic §27 scenario for
 legal template/asset selection and keeps catalogue persistence coverage in sync.
+
+Merged to `main` through `f74a5bd` on 2026-09-17. Brand Brain UI, render preview,
+campaign cost/QA summaries, operator/eval trend UI, the image URL endpoint, and the fourth
+deterministic eval scenario are complete. See `TODO-NEXT.md` and `PARALLEL-WORK.md` for the
+external inputs still required by labelled/live evals, carousel execution and weekly email.
