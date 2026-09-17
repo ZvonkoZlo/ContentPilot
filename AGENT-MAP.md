@@ -48,10 +48,10 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 3 — Text agents and the LLM layer | 1227 | done |
 | 4 — Deterministic QA and fidelity calibration | 1248 | done (`claude`) |
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost, now also writing `ContentHistoryEntry` on approval (§14); only image generation out of scope |
-| 6 — Visual QA and Marketing QA | 1285 | in progress (`claude`) — `VisualQaAgent`/`MarketingQaAgent` built and wired in; QA pass-rate metric (`QaPassRateCalculator`) done; still open: §27 evals, carousel continuity |
+| 6 — Visual QA and Marketing QA | 1285 | in progress — agents and QA pass-rate metric done; four deterministic §27 evals persist, while labelled VisualQA fixtures and carousel execution remain open |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
-| 8 — Packaging, delivery, human review | 1322 | backend done (`claude`) — packaging, ZIP, browse/download/approve/reject/rating/findings/run-tree/cost/retention all built; only the weekly email and the review UI itself (no frontend exists anywhere) remain |
-| 9 — Hardening, cost calibration, evals | 1342 | in progress (`claude`) — admin views done; §27 eval infra + 3 deterministic scenarios done; rest of catalogue, dashboard, live mode, calibration need real data/spend or fixture-building this session hasn't gotten to |
+| 8 — Packaging, delivery, human review | 1322 | in progress — package/ZIP/review APIs and functional UI done; weekly email awaits tenant recipient + provider decisions |
+| 9 — Hardening, cost calibration, evals | 1342 | in progress (`codex`) — operator/eval trend UI and four deterministic scenarios done; labelled/live evals and observed-data calibration remain |
 | 10 — Post-MVP options | 1359 | not started |
 
 Sub-sections worth jumping straight to: agent contract 208, validators 229, orchestrator
@@ -75,10 +75,10 @@ cost enforcement 1034, golden test data 1093.
 Layering is enforced by `tests/ContentPilot.ArchitectureTests/LayeringRules.cs`, tenancy by
 `TenantIsolationRules.cs`. A violation fails the build, so do not "just add a reference".
 
-**`frontend/`** — outside the .NET solution and its layering rules entirely: a minimal
-Angular 17 app (standalone components) for exercising the API by hand. Not the Phase 8
-review UI the plan describes — no auth, no design, just every existing endpoint wired to a
-button. `npm install && npm start`, served at `:4200`; needs the API's CORS policy (already
+**`frontend/`** — outside the .NET solution and its layering rules entirely: a functional
+Angular 17 app (standalone components) for exercising the API by hand. It covers Brand Brain,
+campaign review with render previews/cost/QA, and an operator/eval trend page. It is still not
+the polished/authenticated Phase 8 product UI. `npm install && npm start`, served at `:4200`; needs the API's CORS policy (already
 added, dev-only, `http://localhost:4200`) and reachable at the URL entered in its settings
 bar. See its own `frontend/README.md` and PARALLEL-WORK.md for what it does and does not do.
 

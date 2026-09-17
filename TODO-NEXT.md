@@ -53,32 +53,20 @@ If the asset reference is right and the renderer is legitimately transforming th
 the fidelity check may need to compare against the *post-crop* reference region, not the
 whole source asset.
 
-## 2. Brand Brain UI gaps — backend already done, no frontend
+## 2. Fixed 2026-09-17: Brand Brain UI gaps
 
-The new `/brand` page (`frontend/src/app/brand-profile/`) covers visual identity, voice,
-messaging, and the asset library. It does **not** cover:
+The `/brand` page now covers visual identity, voice, messaging, the asset library, and:
 
-- **Personas** — `GET/POST /api/brands/{id}/personas` (`BrandBrainEndpoints.cs`). No UI.
-- **Product facts** — `GET/POST/DELETE /api/brands/{id}/facts`. No UI. These are what the
-  copy validator checks claims against, so this one matters for content quality, not just
-  convenience.
-- **Content preferences** (weekly quota, excluded/preferred topics, generation schedule) —
-  `GET/PUT /api/brands/{id}/preferences`. No UI.
+- **Personas** — list/add, including pains, goals, objections, vocabulary and primary status.
+- **Product facts** — list/add/delete, including evidence, visibility and validity window.
+- **Content preferences** — quota, preferred/excluded topics, publish days and generation schedule.
 
-Same pattern as the Brand page: read `frontend/src/app/brand-profile/brand-profile.component.ts`
-for the conventions (signals, `ApiService` wrapper, comma-separated-text-to-array helper)
-and either extend that component or add sibling ones + a route.
+## 3. Fixed 2026-09-17: Review UI gaps
 
-## 3. Review UI — smaller gaps
-
-- **Item detail has no image preview.** `campaign-detail.component.html` lets you
-  Approve/Reject/Rate/Download but never shows the actual rendered image — you have to
-  download it to see what was produced. Add an `<img>` using the presigned URL (there's
-  already a pattern for this in `AssetEndpoints`'s `/url` route — check whether an
-  equivalent exists for a rendered `ContentItem`'s output, or add one).
-- **Dashboard has no cost/QA-pass-rate summary** — `getCost`/`getQaPassRate` are already in
-  `ApiService` and used inside campaign-detail, but the campaign list on the dashboard
-  doesn't surface either at a glance.
+- **Item detail image preview** uses a tenant/campaign-scoped presigned URL for the promoted
+  or latest render; the endpoint refuses an item from another campaign.
+- **Campaign dashboard cost/QA summary** shows total cost and first-attempt pass rate inline
+  for every listed campaign.
 - This whole `frontend/` app is explicitly **not** the Phase 8 review UI from
   `IMPLEMENTATION-PLAN.md` — no auth, no real design system, functional only. Worth keeping
   in mind before investing in polish here vs. treating it as a permanent internal tool.
@@ -88,11 +76,22 @@ and either extend that component or add sibling ones + a route.
 - §27 eval scenarios for Visual QA / Marketing QA agents — not built yet.
 - Carousel continuity checks (cross-slide consistency for carousel-type items) — not built.
 
+The buildable deterministic §27 row "CreativeDirector picks a legal template and asset" is
+now the fourth persisted eval scenario. VisualQA recall/false-positive rows still need
+hand-labelled golden renders and recorded/live model judgements; none exist in the repo yet.
+Carousel continuity still has no pipeline execution path because the item workflow currently
+drives only `StaticPost`, despite the Phase 7 renderer primitives being present.
+
 ## 5. Phase 8 — Packaging/delivery
 
 - The weekly email (campaign package notification) is the one piece of Phase 8's backend
   still missing. Packaging, ZIP, browse/download/approve/reject/rating/findings/run-tree/
   cost/retention are all done.
+
+`CampaignPackage.EmailSentAt` and its once-only mutation already exist, but neither Tenant nor
+Brand has a recipient address and no sender/provider is selected. A global configured
+recipient would violate tenant isolation, so implementation remains blocked on those two
+product decisions rather than adding a non-delivering abstraction.
 
 ## 6. Phase 9 — Hardening, cost calibration, evals
 
@@ -100,6 +99,11 @@ and either extend that component or add sibling ones + a route.
 - An actual cost/quality dashboard (admin views exist, this is more than that).
 - "Live mode" calibration — needs real spend/data, which this session's live runs are a
   first data point for but not enough to calibrate against.
+
+The minimal UI now has an `/admin` operator page for dead jobs, stuck runs and persisted eval
+trends with per-scenario detail. Campaign rows also surface their cost and first-pass QA rate.
+Real threshold/budget calibration still needs the planned ten live campaigns; code cannot
+manufacture that dataset honestly.
 
 ## Not a task, just context worth knowing
 

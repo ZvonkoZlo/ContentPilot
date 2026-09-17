@@ -24,10 +24,14 @@ development.
    first via `POST /api/tenants` (no UI for that here — it's a one-time setup step). The
    golden tenant seeded by `--seed` shows up here.
 3. **Brand** — picked from the dropdown once a tenant is selected.
-4. From there: **Generate now** triggers a campaign, the table lists campaigns for the brand,
+4. From there: **Generate now** triggers a campaign, the table lists campaigns for the brand
+   with cost and first-pass QA summaries,
    and opening one shows its items, cost, QA pass rate, and a **Build / get ZIP download
    link** button. Opening an item shows its findings, run tree, and agent runs, with
    **Approve** / **Reject** for anything stuck in `NeedsHumanReview` and a 1–5 rating field.
+   Item detail also previews the promoted/latest rendered image through a short-lived URL.
+5. **Brand** edits the complete Brand Brain: profile, personas, citable facts, content
+   preferences and assets. **Admin** shows dead jobs, stuck runs and the persisted eval trend.
 
 Settings persist in the browser's `localStorage`, so a reload keeps the same tenant/brand.
 

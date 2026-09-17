@@ -1437,3 +1437,24 @@ Integration: the 104 non-race tests pass together and the documented
 `JobQueueTests.A_duplicate_key_committed_concurrently_loses_on_the_unique_index` passes in
 isolation; in two full-suite runs that known scheduling flake was the only failure (104/105
 passed each run). No application-owned, frontend, contract or threshold file changed.
+
+### TODO-NEXT Brand/review UI and Phase 9 trend follow-up (`codex`, 2026-09-17)
+
+Completed the remaining functional UI gaps. `/brand` now manages personas, citable product
+facts and content preferences against the existing Brand Brain endpoints. Campaign item
+detail previews the promoted/latest render through a new campaign-scoped 15-minute presigned
+URL; its integration test proves an item id cannot be used through another campaign route.
+The campaign list now shows per-campaign cost and first-attempt QA pass rate.
+
+Added `/admin` for dead jobs, stuck workflow runs and persisted eval trends. The new
+`GET /api/admin/eval-runs` returns each recent `EvalRun` with its `EvalResult` rows, and a
+Docker integration test verifies the shape. Added §27's fourth honest deterministic scenario,
+`CreativeDirector picks a legal template and asset`: only compatible content type/ratio
+templates survive, required asset kinds exist, immutable screenshots use uploads rather than
+generated images, and every rejected template has a reason.
+
+Still external-data/decision bound: labelled VisualQA recall/false-positive evals need golden
+renders plus recorded/live judgements; carousel continuity has no item-workflow execution path;
+weekly email has no tenant recipient field or selected provider; live cost/budget calibration
+needs the planned ten real campaigns. These were not replaced with validator-only scenarios,
+a global email recipient, or fabricated calibration data.
