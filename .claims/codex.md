@@ -2,8 +2,8 @@
 agent: codex
 phase: phase-8-weekly-email
 branch: phase-8-weekly-email
-status: active
-migrations: true
+status: done
+migrations: false
 updated: 2026-09-17
 ---
 
@@ -33,3 +33,8 @@ PARALLEL-WORK.md
 Implement Phase 8 weekly campaign notification email with per-brand recipients, SMTP/STARTTLS
 configuration, completion-time delivery, once-only EmailSentAt tracking, and automated coverage.
 The claim owns migrations for the new Brand notification recipient field.
+
+Merged to `main` through `51d5391` on 2026-09-17. Phase 8 weekly delivery, the per-brand
+recipient endpoint/migration, MailKit transport configuration and completion/failure tests are
+complete. Labelled VisualQA evals, carousel execution and observed-data calibration remain
+external-input work as recorded in `TODO-NEXT.md`.
