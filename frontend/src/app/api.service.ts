@@ -12,6 +12,8 @@ import {
   CampaignCost,
   CampaignPackage,
   ContentPreferences,
+  DeadJob,
+  EvalRun,
   ContentItemSummary,
   ItemDetail,
   ItemImage,
@@ -19,6 +21,7 @@ import {
   PersonaDetail,
   ProductFact,
   QaPassRate,
+  StuckRun,
   Tenant,
 } from './models';
 
@@ -43,6 +46,18 @@ export class ApiService {
 
   listTenants(): Observable<Tenant[]> {
     return this.http.get<Tenant[]>(`${this.base}/api/tenants`);
+  }
+
+  listDeadJobs(limit = 100): Observable<DeadJob[]> {
+    return this.http.get<DeadJob[]>(`${this.base}/api/admin/dead-jobs?limit=${limit}`);
+  }
+
+  listStuckRuns(): Observable<StuckRun[]> {
+    return this.http.get<StuckRun[]>(`${this.base}/api/admin/stuck-runs`);
+  }
+
+  listEvalRuns(limit = 50): Observable<EvalRun[]> {
+    return this.http.get<EvalRun[]>(`${this.base}/api/admin/eval-runs?limit=${limit}`);
   }
 
   listBrands(): Observable<Brand[]> {

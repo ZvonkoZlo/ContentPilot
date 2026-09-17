@@ -118,6 +118,47 @@ export interface CampaignPackage {
   manifestJson: string;
 }
 
+export interface DeadJob {
+  id: string;
+  type: string;
+  tenantId: string | null;
+  attempts: number;
+  maxAttempts: number;
+  lastError: string | null;
+  createdAt: string;
+  startedAt: string | null;
+}
+
+export interface StuckRun {
+  id: string;
+  tenantId: string;
+  scope: string;
+  campaignId: string;
+  entityId: string;
+  deadline: string;
+  leaseUntil: string | null;
+  leaseOwner: string | null;
+  stepsExecuted: number;
+}
+
+export interface EvalResult {
+  scenarioName: string;
+  kind: string;
+  passed: boolean;
+  detail: string;
+  durationMs: number;
+}
+
+export interface EvalRun {
+  id: string;
+  mode: string;
+  runAt: string;
+  totalScenarios: number;
+  passedScenarios: number;
+  allPassed: boolean;
+  results: EvalResult[];
+}
+
 export interface VisualIdentity {
   primaryColor: string;
   secondaryColor: string | null;

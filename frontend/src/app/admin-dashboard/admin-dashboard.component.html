@@ -1,0 +1,82 @@
+<div class="heading">
+  <div>
+    <h2>Operator dashboard</h2>
+    <p>Cross-tenant workflow health and eval regression history.</p>
+  </div>
+  <button (click)="refresh()" [disabled]="loading()">{{ loading() ? 'Loading…' : 'Refresh' }}</button>
+</div>
+
+@if (error()) { <div class="card err">{{ error() }}</div> }
+
+<div class="summary">
+  <div class="card metric"><strong>{{ deadJobs().length }}</strong><span>dead jobs</span></div>
+  <div class="card metric"><strong>{{ stuckRuns().length }}</strong><span>stuck runs</span></div>
+  <div class="card metric">
+    <strong>{{ evalRuns().length ? evalRuns()[0].passedScenarios + '/' + evalRuns()[0].totalScenarios : '—' }}</strong>
+    <span>latest eval</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Eval trend</h2>
+  @if (evalRuns().length === 0) {
+    <p>No eval runs recorded yet.</p>
+  } @else {
+    @for (run of evalRuns(); track run.id) {
+      <details [open]="$first">
+        <summary>
+          {{ run.runAt | date: 'medium' }} · {{ run.mode }} ·
+          <span class="badge" [ngClass]="run.allPassed ? 'ok' : 'bad'">
+            {{ run.passedScenarios }}/{{ run.totalScenarios }} passed
+          </span>
+        </summary>
+        <table>
+          <thead><tr><th>Scenario</th><th>Kind</th><th>Result</th><th>Duration</th><th>Detail</th></tr></thead>
+          <tbody>
+            @for (result of run.results; track result.scenarioName) {
+              <tr>
+                <td>{{ result.scenarioName }}</td>
+                <td>{{ result.kind }}</td>
+                <td><span class="badge" [ngClass]="result.passed ? 'ok' : 'bad'">{{ result.passed ? 'Pass' : 'Fail' }}</span></td>
+                <td>{{ result.durationMs }} ms</td>
+                <td>{{ result.detail || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </details>
+    }
+  }
+</div>
+
+<div class="card">
+  <h2>Dead jobs</h2>
+  @if (deadJobs().length === 0) {
+    <p>No dead jobs.</p>
+  } @else {
+    <table>
+      <thead><tr><th>Created</th><th>Type</th><th>Tenant</th><th>Attempts</th><th>Last error</th></tr></thead>
+      <tbody>
+        @for (job of deadJobs(); track job.id) {
+          <tr><td>{{ job.createdAt | date: 'short' }}</td><td>{{ job.type }}</td><td><code>{{ job.tenantId || 'system' }}</code></td><td>{{ job.attempts }}/{{ job.maxAttempts }}</td><td>{{ job.lastError || '—' }}</td></tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>
+
+<div class="card">
+  <h2>Stuck runs</h2>
+  @if (stuckRuns().length === 0) {
+    <p>No active runs past their deadline.</p>
+  } @else {
+    <table>
+      <thead><tr><th>Deadline</th><th>Scope</th><th>Campaign</th><th>Lease owner</th><th>Steps</th></tr></thead>
+      <tbody>
+        @for (run of stuckRuns(); track run.id) {
+          <tr><td>{{ run.deadline | date: 'short' }}</td><td>{{ run.scope }}</td><td><code>{{ run.campaignId }}</code></td><td>{{ run.leaseOwner || '—' }}</td><td>{{ run.stepsExecuted }}</td></tr>
+        }
+      </tbody>
+    </table>
+  }
+</div>

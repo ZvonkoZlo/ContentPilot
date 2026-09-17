@@ -1,4 +1,5 @@
 using ContentPilot.Application.Abstractions;
+using ContentPilot.Domain.Evals;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Jobs;
 using ContentPilot.Infrastructure.Persistence;
@@ -60,6 +61,38 @@ public static class AdminEndpoints
             "should be resolving these on its own schedule; a run appearing here for more " +
             "than one reaper interval means the reaper itself needs attention, not the run.");
 
+        group.MapGet("/eval-runs", async (AppDbContext db, int limit, CancellationToken ct) =>
+        {
+            var runs = await db.EvalRuns
+                .AsNoTracking()
+                .OrderByDescending(r => r.RunAt)
+                .Take(limit is > 0 and <= 200 ? limit : 50)
+                .ToListAsync(ct);
+
+            var runIds = runs.Select(r => r.Id).ToArray();
+            var results = await db.EvalResults
+                .AsNoTracking()
+                .Where(r => runIds.Contains(r.EvalRunId))
+                .OrderBy(r => r.ScenarioName)
+                .ToListAsync(ct);
+            var byRun = results.ToLookup(r => r.EvalRunId);
+
+            return Results.Ok(runs.Select(run => new EvalRunResponse(
+                run.Id,
+                run.Mode.ToString(),
+                run.RunAt,
+                run.TotalScenarios,
+                run.PassedScenarios,
+                run.AllPassed,
+                byRun[run.Id].Select(result => new EvalResultResponse(
+                    result.ScenarioName,
+                    result.Kind.ToString(),
+                    result.Passed,
+                    result.Detail,
+                    result.DurationMs)).ToList())));
+        })
+        .WithSummary("Lists recent eval runs with their scenario results for Phase 9's regression trend view.");
+
         return app;
     }
 }
@@ -70,3 +103,10 @@ public sealed record DeadJobResponse(
 public sealed record StuckRunResponse(
     Guid Id, Guid TenantId, string Scope, Guid CampaignId, Guid EntityId,
     DateTimeOffset Deadline, DateTimeOffset? LeaseUntil, string? LeaseOwner, int StepsExecuted);
+
+public sealed record EvalRunResponse(
+    Guid Id, string Mode, DateTimeOffset RunAt, int TotalScenarios, int PassedScenarios,
+    bool AllPassed, IReadOnlyList<EvalResultResponse> Results);
+
+public sealed record EvalResultResponse(
+    string ScenarioName, string Kind, bool Passed, string Detail, int DurationMs);

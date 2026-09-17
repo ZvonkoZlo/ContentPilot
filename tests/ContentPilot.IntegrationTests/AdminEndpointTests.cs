@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using ContentPilot.Application.Abstractions;
 using ContentPilot.Domain.Content;
+using ContentPilot.Domain.Evals;
 using ContentPilot.Domain.Tenancy;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Jobs;
@@ -111,7 +112,36 @@ public sealed class AdminEndpointTests(ContentPilotFixture fixture) : IAsyncLife
         runs!.ShouldContain(r => r.Id == runId && r.TenantId == tenantId && r.CampaignId == campaignId);
     }
 
+    [DockerFact]
+    public async Task Eval_trend_returns_each_runs_scenario_results()
+    {
+        using var scope = _factory!.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var run = new EvalRun(EvalMode.Cassette, DateTimeOffset.UtcNow, totalScenarios: 2, passedScenarios: 1);
+        db.EvalRuns.Add(run);
+        db.EvalResults.AddRange(
+            new EvalResult(run.Id, "clean render", EvalScenarioKind.DeterministicLabels, true, "no findings", 12),
+            new EvalResult(run.Id, "mutated render", EvalScenarioKind.DeterministicLabels, false, "finding missed", 15));
+        await db.SaveChangesAsync();
+
+        var response = await _client.GetAsync("/api/admin/eval-runs?limit=10");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var runs = await response.Content.ReadFromJsonAsync<List<EvalRunDto>>();
+        var reloaded = runs!.Single(r => r.Id == run.Id);
+        reloaded.Mode.ShouldBe("Cassette");
+        reloaded.AllPassed.ShouldBeFalse();
+        reloaded.Results.Count.ShouldBe(2);
+        reloaded.Results.ShouldContain(r => r.ScenarioName == "mutated render" && !r.Passed);
+    }
+
     private sealed record DeadJobDto(Guid Id, string Type, Guid? TenantId, int Attempts, int MaxAttempts, string? LastError, DateTimeOffset CreatedAt, DateTimeOffset? StartedAt);
 
     private sealed record StuckRunDto(Guid Id, Guid TenantId, string Scope, Guid CampaignId, Guid EntityId, DateTimeOffset Deadline, DateTimeOffset? LeaseUntil, string? LeaseOwner, int StepsExecuted);
+
+    private sealed record EvalRunDto(
+        Guid Id, string Mode, DateTimeOffset RunAt, int TotalScenarios, int PassedScenarios,
+        bool AllPassed, IReadOnlyList<EvalResultDto> Results);
+
+    private sealed record EvalResultDto(string ScenarioName, string Kind, bool Passed, string Detail, int DurationMs);
 }

@@ -23,6 +23,7 @@ public sealed class EvalPersistenceTests(ContentPilotFixture fixture)
         new StrategistAvoidsRecentTopicsScenario(),
         new StrategistRespectsQuotasAndExclusionsScenario(),
         new CopywriterRespectsSlotBudgetsScenario(),
+        new CreativeDirectorPicksLegalTemplateAndAssetScenario(),
     ];
 
     [DockerFact]

@@ -34,6 +34,14 @@ public sealed class EvalScenarioTests
     }
 
     [Fact]
+    public async Task Creative_director_legal_template_and_asset_scenario_passes_against_the_selector()
+    {
+        var outcome = await new CreativeDirectorPicksLegalTemplateAndAssetScenario().RunAsync(default);
+
+        outcome.Passed.ShouldBeTrue(outcome.Detail);
+    }
+
+    [Fact]
     public void Every_scenario_names_the_kind_the_plans_own_catalogue_gives_it()
     {
         IEnumerable<(string Name, string Kind)> scenarios =
@@ -41,6 +49,7 @@ public sealed class EvalScenarioTests
             (new StrategistAvoidsRecentTopicsScenario().Name, new StrategistAvoidsRecentTopicsScenario().Kind.ToString()),
             (new StrategistRespectsQuotasAndExclusionsScenario().Name, new StrategistRespectsQuotasAndExclusionsScenario().Kind.ToString()),
             (new CopywriterRespectsSlotBudgetsScenario().Name, new CopywriterRespectsSlotBudgetsScenario().Kind.ToString()),
+            (new CreativeDirectorPicksLegalTemplateAndAssetScenario().Name, new CreativeDirectorPicksLegalTemplateAndAssetScenario().Kind.ToString()),
         ];
 
         scenarios.ShouldAllBe(s => s.Kind == "Deterministic");
