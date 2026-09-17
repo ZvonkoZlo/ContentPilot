@@ -10,10 +10,12 @@ updated: 2026-09-17
 ## paths
 
 frontend/
+src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
+tests/ContentPilot.IntegrationTests/ApiEndpointTests.cs
 
 ## notes
 
 Implement the remaining `TODO-NEXT.md` frontend work: Brand Brain personas, product facts
 and content preferences, followed by rendered-image preview and campaign-list cost/QA
-summaries. Backend paths remain read-only until a concrete missing endpoint is confirmed and
-claimed separately.
+summaries. The review found that item detail exposes no rendered asset URL, so the claim also
+covers one campaign image-URL endpoint and its integration coverage.
