@@ -13,7 +13,7 @@ src/ContentPilot.Domain/Branding/Brand.cs
 src/ContentPilot.Application/Abstractions/
 src/ContentPilot.Infrastructure/Email/
 src/ContentPilot.Infrastructure/Jobs/CampaignWorkflowJobHandler.cs
-src/ContentPilot.Infrastructure/Persistence/Configurations/BrandBrainConfigurations.cs
+src/ContentPilot.Infrastructure/Persistence/Configurations/BrandConfiguration.cs
 src/ContentPilot.Infrastructure/Persistence/Migrations/
 src/ContentPilot.Infrastructure/ContentPilot.Infrastructure.csproj
 src/ContentPilot.Api/Endpoints/BrandEndpoints.cs
