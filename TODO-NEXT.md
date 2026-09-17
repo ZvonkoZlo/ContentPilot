@@ -8,6 +8,46 @@ session — all committed and pushed to `main` on
 Read `CLAUDE.md` → `PARALLEL-WORK.md` and claim your paths in `.claims/` before touching
 anything, same as always. This file is a punch list, not a replacement for those.
 
+## 0. New 2026-09-17: screenshot slots stretch instead of cropping, real screenshots fail `ScreenshotAltered`
+
+The user uploaded Appointso's actual product screenshots (738×1600, portrait, real
+phone-shaped device UI, via `/api/brands/{id}/assets`, `kind=ProductScreenshot`) and reran
+a live campaign after the `ScreenshotWrongAsset` fix (`635e8cc`) landed. That bug is gone —
+but every item now fails a **different** deterministic finding instead:
+
+```
+ScreenshotAltered at Validating: quality attempts exhausted (2/3).
+"The product UI in 'screenshot' is structurally changed (similarity ... against a ... pass
+line): a blur, a warp, or a wrong crop."
+```
+
+**Root cause, found by reading the two templates that declare a `ProductScreenshot` slot:**
+
+- `src/ContentPilot.Renderer/Templates/Static/PhoneFloating.razor` — `.pf-screen` (line 131)
+  wraps the screenshot `<img>` (line 31) with no `object-fit` set at all. `.pf-device`'s box
+  is a fixed `aspect-ratio: 9 / 17.5` (≈0.514); a real screenshot's own aspect ratio (0.461
+  for the ones just uploaded) will essentially never match that exactly.
+- `src/ContentPilot.Renderer/Templates/Static/FeatureHighlight.razor` — `.fh-shot` (line 116)
+  wraps its screenshot `<img>` (line 34) the same way: no `object-fit`.
+- With no `object-fit`, the browser's default (`fill`) **stretches** the image to the box's
+  exact dimensions — squashing or stretching every pixel — which is exactly what drives the
+  structural-similarity metric (`FidelityChecks.cs` line ~109) below the pass line.
+- Contrast with the two slots that already do this correctly:
+  `HookOverlay.razor` line 46 (`.ho-bg img { ...; object-fit: cover; }`) and
+  `Testimonial.razor` line 96 (`.ts-photo img { ...; object-fit: cover; }`). Both of those
+  slot kinds (`Background`, `Photo`) never hit this problem because they already crop
+  instead of stretching.
+
+**Fix:** add `object-fit: cover;` (matching the pattern in the two working templates) to
+`.fh-shot img` and `.pf-screen img`. Since both slots are `"immutable": true` in their
+manifests (`feature-highlight.manifest.json`, `phone-floating.manifest.json`) — meaning the
+UI itself must never be edited or covered — verify with the actual uploaded screenshots that
+`cover`'s crop doesn't clip meaningful UI chrome (a status bar, a critical button) enough to
+trip the `maxOcclusion: 0.02` budget on those manifests; if it does, the box's `aspect-ratio`
+may need loosening instead of (or in addition to) the CSS fix, so the crop has less to do.
+Add a renderer regression test with a screenshot whose aspect ratio deliberately does not
+match the box, asserting the fidelity check now passes.
+
 ## 1. Fixed 2026-09-16: screenshot slot pHash false positive
 
 Every live campaign so far has every `StaticPost` item end at `NeedsHumanReview` with the
