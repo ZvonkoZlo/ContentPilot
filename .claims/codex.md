@@ -10,12 +10,13 @@ updated: 2026-09-17
 ## paths
 
 src/ContentPilot.Renderer/Templates/Static/
+src/ContentPilot.Renderer/Imaging/FidelityComparer.cs
 tests/ContentPilot.RendererTests/
 TODO-NEXT.md
 PARALLEL-WORK.md
 
 ## notes
 
-Fix immutable ProductScreenshot slots that stretch mismatched source aspect ratios in
-PhoneFloating and FeatureHighlight. Verify crop/occlusion behavior and add a renderer fidelity
-regression using a deliberately mismatched screenshot aspect ratio.
+Reproduce the reported immutable ProductScreenshot failure in PhoneFloating and
+FeatureHighlight, verify the proposed crop against occlusion/fidelity, and fix the measured
+root cause with a deliberately mismatched 738x1600 screenshot regression.
