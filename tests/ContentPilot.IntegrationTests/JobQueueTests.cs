@@ -83,13 +83,20 @@ public sealed class JobQueueTests(ContentPilotFixture fixture)
         var tenantId = await SeedTenantAsync();
         var key = $"race:{Guid.NewGuid():N}";
 
-        // Both scopes read "not present" before either commits, so only the database
-        // constraint can settle it.
-        var attempts = await Task.WhenAll(
+        // Both scopes may read "not present" before either commits, in which case the
+        // unique index turns the loser's insert into a DbUpdateException the caller
+        // swallows. But EnqueueAsync's pre-check is deliberately idempotent (§ "Enqueue
+        // does not save" — a second call with the same key returns the winner's existing
+        // row rather than erroring), so if the CI runner schedules the two calls far
+        // enough apart, the second one's pre-check finds the first's already-committed
+        // row and returns its id with no exception at all. Both calls then legitimately
+        // report "true" — that is not a race being lost, it is idempotency working as
+        // designed. Asserting "exactly one call reports success" was asserting on that
+        // scheduling accident rather than on the actual guarantee, which is the row
+        // count below: however the two calls interleave, exactly one job row exists.
+        await Task.WhenAll(
             TryEnqueueAsync(tenantId, key),
             TryEnqueueAsync(tenantId, key));
-
-        attempts.Count(ok => ok).ShouldBe(1, "Exactly one of two racing enqueues may win.");
 
         await using var scope = fixture.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
