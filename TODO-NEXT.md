@@ -82,16 +82,21 @@ hand-labelled golden renders and recorded/live model judgements; none exist in t
 Carousel continuity still has no pipeline execution path because the item workflow currently
 drives only `StaticPost`, despite the Phase 7 renderer primitives being present.
 
-## 5. Phase 8 — Packaging/delivery
+## 5. Fixed 2026-09-17: Phase 8 weekly campaign email
 
-- The weekly email (campaign package notification) is the one piece of Phase 8's backend
-  still missing. Packaging, ZIP, browse/download/approve/reject/rating/findings/run-tree/
-  cost/retention are all done.
+Phase 8's remaining backend delivery piece is implemented. Each `Brand` has its own optional
+`NotificationEmail`, managed through `PUT /api/brands/{id}/notification-email`; the new
+nullable column is delivered by the `BrandNotificationEmail` migration. Completion sends a
+short plain-text summary with Approved/NeedsHumanReview counts and a durable link to
+`/campaign/{id}`. A short-lived object-storage URL is deliberately not embedded.
 
-`CampaignPackage.EmailSentAt` and its once-only mutation already exist, but neither Tenant nor
-Brand has a recipient address and no sender/provider is selected. A global configured
-recipient would violate tenant isolation, so implementation remains blocked on those two
-product decisions rather than adding a non-delivering abstraction.
+`IEmailSender` is implemented with MailKit over STARTTLS. Configuration follows the existing
+secret pattern (`Email__Enabled`, `Email__Smtp__Host/Port/Username/Password`,
+`Email__ReviewUiBaseUrl`), is disabled by default, and docker compose explicitly forwards the
+variables. Credentials stay in `.env`/the deployment secret store. `EmailSentAt` is marked
+only after a successful send; a transport failure is logged and does not fail the campaign.
+Integration coverage proves successful once-only delivery, failure isolation, recipient
+validation and migration application. No live email was sent during automated validation.
 
 ## 6. Phase 9 — Hardening, cost calibration, evals
 
@@ -104,6 +109,11 @@ The minimal UI now has an `/admin` operator page for dead jobs, stuck runs and p
 trends with per-scenario detail. Campaign rows also surface their cost and first-pass QA rate.
 Real threshold/budget calibration still needs the planned ten live campaigns; code cannot
 manufacture that dataset honestly.
+
+No weekly aggregate endpoint was added yet. The existing per-campaign cost/QA summaries and
+persisted eval trend endpoint already capture the data needed for the first calibration pass;
+the useful weekly grouping and filters should be chosen from observed usage rather than added
+speculatively before the ten-campaign dataset exists.
 
 ## Not a task, just context worth knowing
 

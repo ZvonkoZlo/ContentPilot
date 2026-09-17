@@ -28,6 +28,12 @@ x-app-env: &app-env
   Ai__CampaignBudgetMicroCents: "${Ai__CampaignBudgetMicroCents:-200000000}"
   Ai__Providers__Anthropic__ApiKey: "${Ai__Providers__Anthropic__ApiKey:-}"
   Ai__Providers__OpenAi__ApiKey: "${Ai__Providers__OpenAi__ApiKey:-}"
+  Email__Enabled: "${Email__Enabled:-false}"
+  Email__Smtp__Host: "${Email__Smtp__Host:-smtp-mail.outlook.com}"
+  Email__Smtp__Port: "${Email__Smtp__Port:-587}"
+  Email__Smtp__Username: "${Email__Smtp__Username:-}"
+  Email__Smtp__Password: "${Email__Smtp__Password:-}"
+  Email__ReviewUiBaseUrl: "${Email__ReviewUiBaseUrl:-http://localhost:4200}"
 
 services:
   postgres:

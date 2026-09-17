@@ -101,6 +101,31 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
     }
 
     [DockerFact]
+    public async Task A_notification_email_can_be_set_and_cleared_per_brand()
+    {
+        var set = await _client.PutAsJsonAsync($"/api/brands/{_brandId}/notification-email",
+            new { notificationEmail = "owner@example.com" });
+
+        set.StatusCode.ShouldBe(HttpStatusCode.OK, await set.Content.ReadAsStringAsync());
+        (await set.Content.ReadFromJsonAsync<BrandDto>())!.NotificationEmail.ShouldBe("owner@example.com");
+
+        var clear = await _client.PutAsJsonAsync($"/api/brands/{_brandId}/notification-email",
+            new { notificationEmail = (string?)null });
+
+        clear.StatusCode.ShouldBe(HttpStatusCode.OK, await clear.Content.ReadAsStringAsync());
+        (await clear.Content.ReadFromJsonAsync<BrandDto>())!.NotificationEmail.ShouldBeNull();
+    }
+
+    [DockerFact]
+    public async Task An_invalid_notification_email_is_rejected()
+    {
+        var response = await _client.PutAsJsonAsync($"/api/brands/{_brandId}/notification-email",
+            new { notificationEmail = "not an email" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [DockerFact]
     public async Task A_profile_round_trips_through_the_api()
     {
         var put = await _client.PutAsJsonAsync($"/api/brands/{_brandId}/profile", new
@@ -705,7 +730,7 @@ public sealed class ApiEndpointTests(ContentPilotFixture fixture) : IAsyncLifeti
 
     private sealed record TenantDto(Guid Id);
 
-    private sealed record BrandDto(Guid Id);
+    private sealed record BrandDto(Guid Id, string? NotificationEmail);
 
     private sealed record ProfileDto(VisualDto Visual, VoiceDto Voice);
 

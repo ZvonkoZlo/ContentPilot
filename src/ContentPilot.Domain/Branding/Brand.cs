@@ -1,4 +1,5 @@
 using ContentPilot.Domain.Common;
+using System.Net.Mail;
 
 namespace ContentPilot.Domain.Branding;
 
@@ -36,6 +37,9 @@ public sealed class Brand : Entity, ITenantOwned, IAuditable
 
     public string? Website { get; private set; }
 
+    /// <summary>Recipient for completed weekly campaign notifications.</summary>
+    public string? NotificationEmail { get; private set; }
+
     /// <summary>IANA identifier. Weekly generation fires at 06:00 local to the brand.</summary>
     public string TimeZoneId { get; private set; }
 
@@ -54,6 +58,25 @@ public sealed class Brand : Entity, ITenantOwned, IAuditable
 
     public void SetWebsite(string? website) =>
         Website = string.IsNullOrWhiteSpace(website) ? null : Guard.MaxLength(website.Trim(), 500);
+
+    public void SetNotificationEmail(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            NotificationEmail = null;
+            return;
+        }
+
+        var normalized = Guard.MaxLength(email.Trim(), 320);
+
+        if (!MailAddress.TryCreate(normalized, out var address) ||
+            !string.Equals(address.Address, normalized, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Notification email must be a valid email address.", nameof(email));
+        }
+
+        NotificationEmail = normalized;
+    }
 
     public void SetTimeZone(string timeZoneId) => TimeZoneId = Guard.NotBlank(timeZoneId);
 

@@ -8,6 +8,7 @@ using ContentPilot.Application.Prompts;
 using ContentPilot.Domain.Content;
 using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Branding;
+using ContentPilot.Infrastructure.Email;
 using ContentPilot.Infrastructure.Jobs;
 using ContentPilot.Infrastructure.Persistence;
 using ContentPilot.IntegrationTests.Infrastructure;
@@ -15,6 +16,7 @@ using ContentPilot.TestSupport;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Shouldly;
 
 namespace ContentPilot.IntegrationTests;
@@ -97,6 +99,72 @@ public sealed class CampaignWorkflowJobHandlerTests(ContentPilotFixture fixture)
         var reloaded = await db.ContentCampaigns.AsNoTracking().SingleAsync(c => c.Id == campaign.Id);
         reloaded.Status.ShouldBe(CampaignStatus.Ready);
         reloaded.CompletedAt.ShouldNotBeNull();
+    }
+
+    [DockerFact]
+    public async Task Completion_sends_one_email_and_records_when_it_was_sent()
+    {
+        var (campaign, scope) = await SetupAsync();
+        await using var _scope = scope;
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var brand = await db.Brands.SingleAsync(b => b.Id == campaign.BrandId);
+        brand.SetNotificationEmail("owner@example.com");
+        await db.SaveChangesAsync();
+
+        var sender = new RecordingEmailSender();
+        var handler = BuildHandler(scope.ServiceProvider, PlanJson(), sender, emailEnabled: true);
+
+        await AdvanceAsync(handler, campaign.Id);
+
+        foreach (var item in await db.ContentItems.Where(i => i.CampaignId == campaign.Id).ToListAsync())
+        {
+            item.MoveTo(ContentItemStatus.Approved);
+        }
+
+        await db.SaveChangesAsync();
+        await AdvanceAsync(handler, campaign.Id);
+
+        var package = await db.CampaignPackages.AsNoTracking().SingleAsync(p => p.CampaignId == campaign.Id);
+        package.EmailSentAt.ShouldNotBeNull();
+        sender.Messages.Count.ShouldBe(1);
+        sender.Messages[0].To.ShouldBe("owner@example.com");
+        sender.Messages[0].Body.ShouldContain("Approved items: 4");
+        sender.Messages[0].Body.ShouldContain($"/campaign/{campaign.Id}");
+
+        // A duplicate completion delivery sees a terminal campaign and cannot send twice.
+        await AdvanceAsync(handler, campaign.Id);
+        sender.Messages.Count.ShouldBe(1);
+    }
+
+    [DockerFact]
+    public async Task Email_transport_failure_does_not_fail_a_completed_campaign()
+    {
+        var (campaign, scope) = await SetupAsync();
+        await using var _scope = scope;
+
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var brand = await db.Brands.SingleAsync(b => b.Id == campaign.BrandId);
+        brand.SetNotificationEmail("owner@example.com");
+        await db.SaveChangesAsync();
+
+        var handler = BuildHandler(
+            scope.ServiceProvider, PlanJson(), new RecordingEmailSender(shouldFail: true), emailEnabled: true);
+
+        await AdvanceAsync(handler, campaign.Id);
+
+        foreach (var item in await db.ContentItems.Where(i => i.CampaignId == campaign.Id).ToListAsync())
+        {
+            item.MoveTo(ContentItemStatus.Approved);
+        }
+
+        await db.SaveChangesAsync();
+        await AdvanceAsync(handler, campaign.Id);
+
+        (await db.ContentCampaigns.AsNoTracking().SingleAsync(c => c.Id == campaign.Id))
+            .Status.ShouldBe(CampaignStatus.Ready);
+        (await db.CampaignPackages.AsNoTracking().SingleAsync(p => p.CampaignId == campaign.Id))
+            .EmailSentAt.ShouldBeNull();
     }
 
     [DockerFact]
@@ -231,7 +299,11 @@ public sealed class CampaignWorkflowJobHandlerTests(ContentPilotFixture fixture)
         return (campaign, scope);
     }
 
-    private static CampaignWorkflowJobHandler BuildHandler(IServiceProvider services, string planJson)
+    private static CampaignWorkflowJobHandler BuildHandler(
+        IServiceProvider services,
+        string planJson,
+        IEmailSender? emailSender = null,
+        bool emailEnabled = false)
     {
         var db = services.GetRequiredService<AppDbContext>();
         var store = services.GetRequiredService<IObjectStore>();
@@ -252,6 +324,12 @@ public sealed class CampaignWorkflowJobHandlerTests(ContentPilotFixture fixture)
             agentExecutor,
             new ContentStrategistAgent(),
             new ContentPilot.Infrastructure.Packaging.CampaignPackager(db, store, clock),
+            emailSender ?? new RecordingEmailSender(),
+            Options.Create(new EmailOptions
+            {
+                Enabled = emailEnabled,
+                ReviewUiBaseUrl = "https://contentpilot.example",
+            }),
             NullLogger<CampaignWorkflowJobHandler>.Instance);
     }
 
@@ -287,6 +365,22 @@ public sealed class CampaignWorkflowJobHandlerTests(ContentPilotFixture fixture)
                 DurationMs = 300,
                 CostMicroCents = 60_000,
             });
+        }
+    }
+
+    private sealed class RecordingEmailSender(bool shouldFail = false) : IEmailSender
+    {
+        public List<(string To, string Subject, string Body)> Messages { get; } = [];
+
+        public Task SendAsync(string to, string subject, string body, CancellationToken ct = default)
+        {
+            if (shouldFail)
+            {
+                throw new InvalidOperationException("Simulated SMTP failure.");
+            }
+
+            Messages.Add((to, subject, body));
+            return Task.CompletedTask;
         }
     }
 }

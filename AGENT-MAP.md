@@ -50,7 +50,7 @@ sed -n '739,766p'   IMPLEMENTATION-PLAN.md    # the template manifest
 | 5 — Orchestrator, retries, self-correction | 1266 | done (`claude`) — manual/scheduled/reconciled trigger → campaign → items → Approved for StaticPost, now also writing `ContentHistoryEntry` on approval (§14); only image generation out of scope |
 | 6 — Visual QA and Marketing QA | 1285 | in progress — agents and QA pass-rate metric done; four deterministic §27 evals persist, while labelled VisualQA fixtures and carousel execution remain open |
 | 7 — Reels | 1303 | done (`codex`) — merged into `main`; scene composer, FFmpeg filtergraph pipeline, three reel templates |
-| 8 — Packaging, delivery, human review | 1322 | in progress — package/ZIP/review APIs and functional UI done; weekly email awaits tenant recipient + provider decisions |
+| 8 — Packaging, delivery, human review | 1322 | done (`codex`) — package/ZIP/review APIs, functional UI and per-brand SMTP completion email delivered |
 | 9 — Hardening, cost calibration, evals | 1342 | in progress (`codex`) — operator/eval trend UI and four deterministic scenarios done; labelled/live evals and observed-data calibration remain |
 | 10 — Post-MVP options | 1359 | not started |
 
@@ -135,11 +135,11 @@ topic/hook SimHashes and the Directing step's chosen template id.
 `EvalResult` — one per scenario, `EvalScenarioKind`). `Application/Evals/` (`IEvalScenario`,
 `EvalRunner.RunAsync` — pure, no persistence opinion; `Scenarios/` —
 `StrategistAvoidsRecentTopicsScenario`, `StrategistRespectsQuotasAndExclusionsScenario`,
-`CopywriterRespectsSlotBudgetsScenario`, all `Deterministic`, each a regression guard on an
+`CopywriterRespectsSlotBudgetsScenario` and `CreativeDirectorSelectsLegalTemplateScenario`, all `Deterministic`, each a regression guard on an
 existing validator rather than a judgement of model output). EF configuration in
 `Infrastructure/Persistence/Configurations/EvalConfigurations.cs`, migration
 `EvalTracking`. Rest of §27's catalogue (VisualQA image scenarios, the judge/human-rated
-one, live mode, the trend page) not built yet — see PARALLEL-WORK.md for what's deferred
+one and live mode) is not built yet — see PARALLEL-WORK.md for what's deferred
 and why.
 
 **Quality (gates 1–3)** — `Domain/Quality/` (`QaFinding` — has an optional `Confidence`, null
@@ -237,8 +237,11 @@ transition. Only `ContentAssetKind.Image` items package their files today (only
 `campaigns/{campaignId}/package.zip` on demand (temp-file streamed, not buffered),
 cached on `CampaignPackage.ZipKey` — cleared by `Rebuild()`, so a manifest change
 invalidates the cached ZIP automatically. `POST /api/campaigns/{id}/download` builds/reuses
-it and returns a 15-minute presigned URL. **Not yet built**: the review UI (no frontend
-exists at all yet), and the weekly email.
+it and returns a 15-minute presigned URL. `Application/Abstractions/IEmailSender.cs` and
+`Infrastructure/Email/` provide opt-in MailKit SMTP delivery. `Brand.NotificationEmail` is
+the tenant-filtered recipient, and `CampaignWorkflowJobHandler` sends the completion summary
+after packaging, marking `EmailSentAt` only after success. Transport failure is logged without
+failing the campaign. The functional Angular review UI lives in `frontend/`.
 <br>**Also landed alongside this**: rendered image bytes are now actually uploaded to
 object storage (`runs/{itemId}/attempts/{attempt}/{sha256}.ext`, content-addressed) —
 previously `ContentAsset.StorageKey` held a `pending/...` placeholder that nothing ever

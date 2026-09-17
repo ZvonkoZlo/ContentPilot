@@ -91,6 +91,7 @@ public static class DependencyInjection
 
         services.AddContentPilotAi(configuration);
         services.AddContentPilotRendererClient(configuration);
+        Email.EmailServiceCollectionExtensions.AddContentPilotEmail(services, configuration);
 
         return services;
     }

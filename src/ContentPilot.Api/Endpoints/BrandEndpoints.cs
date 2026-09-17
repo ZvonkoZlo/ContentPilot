@@ -66,6 +66,33 @@ public static class BrandEndpoints
         })
         .WithSummary("Creates a brand.");
 
+        group.MapPut("/{id:guid}/notification-email", async (
+            Guid id,
+            SetBrandNotificationEmailRequest request,
+            AppDbContext db,
+            CancellationToken ct) =>
+        {
+            var brand = await db.Brands.FirstOrDefaultAsync(b => b.Id == id, ct);
+
+            if (brand is null)
+            {
+                return Results.NotFound();
+            }
+
+            try
+            {
+                brand.SetNotificationEmail(request.NotificationEmail);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { detail = ex.Message });
+            }
+
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(ToResponse(brand));
+        })
+        .WithSummary("Sets or clears the weekly campaign notification recipient.");
+
         return app;
     }
 
@@ -73,6 +100,7 @@ public static class BrandEndpoints
         brand.Id,
         brand.Name,
         brand.Website,
+        brand.NotificationEmail,
         brand.TimeZoneId,
         brand.Languages,
         brand.IsActive,
@@ -85,10 +113,13 @@ public sealed record CreateBrandRequest(
     string? TimeZoneId,
     IReadOnlyList<string>? Languages);
 
+public sealed record SetBrandNotificationEmailRequest(string? NotificationEmail);
+
 public sealed record BrandResponse(
     Guid Id,
     string Name,
     string? Website,
+    string? NotificationEmail,
     string TimeZoneId,
     IReadOnlyList<string> Languages,
     bool IsActive,

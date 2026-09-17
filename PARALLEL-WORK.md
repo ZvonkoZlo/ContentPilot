@@ -1455,6 +1455,35 @@ generated images, and every rejected template has a reason.
 
 Still external-data/decision bound: labelled VisualQA recall/false-positive evals need golden
 renders plus recorded/live judgements; carousel continuity has no item-workflow execution path;
-weekly email has no tenant recipient field or selected provider; live cost/budget calibration
-needs the planned ten real campaigns. These were not replaced with validator-only scenarios,
-a global email recipient, or fabricated calibration data.
+live cost/budget calibration needs the planned ten real campaigns. These were not replaced
+with validator-only scenarios or fabricated calibration data. The email recipient/provider
+decisions were subsequently supplied and implemented in the section below.
+
+### Phase 8 weekly campaign email (`codex`, 2026-09-17)
+
+Completed Phase 8's remaining backend delivery path. `Brand.NotificationEmail` is nullable,
+tenant-filtered with the brand, validated at the domain/API boundary and added through the
+`BrandNotificationEmail` migration. `PUT /api/brands/{id}/notification-email` sets or clears
+it without introducing a global recipient.
+
+Added the narrow `IEmailSender` application port and a MailKit SMTP implementation using
+mandatory STARTTLS. Email is opt-in and startup-validated under `Email:*`; compose forwards
+the corresponding environment variables explicitly, while appsettings and `.env.example`
+contain no credential. On campaign completion the worker sends Approved and
+NeedsHumanReview counts plus the durable Angular `/campaign/{id}` review/download link. It
+marks `CampaignPackage.EmailSentAt` only after the sender returns successfully. SMTP failure
+is logged and the campaign still reaches Ready/PartiallyReady; cancellation still propagates.
+
+Integration tests use a recording/failing `IEmailSender`, never live SMTP. They prove one
+successful send records `EmailSentAt`, terminal redelivery does not send again, transport
+failure does not fail the campaign, and the brand endpoint validates and round-trips the
+recipient. Validation: solution build clean; integration 111/111, unit 398/398, architecture
+10/10, workflow 1/1 and renderer 36/36 green, with the existing FFmpeg-path renderer test
+skipped.
+
+VisualQA golden evals remain open because the repository still has no human-labelled real
+render corpus; manufacturing labels from deterministic fixtures would not measure model
+recall or false positives. Carousel continuity remains blocked by the absent carousel item
+workflow execution path. Live cost/budget calibration remains the user's observed-data task;
+the existing campaign cost/QA summaries and eval trend endpoint are sufficient to collect the
+first ten campaigns, so no speculative weekly aggregation API was added.

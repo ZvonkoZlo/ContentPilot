@@ -15,6 +15,7 @@ public sealed class BrandConfiguration : IEntityTypeConfiguration<Brand>
         builder.Property(b => b.TenantId).IsRequired();
         builder.Property(b => b.Name).HasMaxLength(200).IsRequired();
         builder.Property(b => b.Website).HasMaxLength(500);
+        builder.Property(b => b.NotificationEmail).HasMaxLength(320);
         builder.Property(b => b.TimeZoneId).HasMaxLength(100).IsRequired();
         builder.Property(b => b.IsActive).HasDefaultValue(true);
         builder.Property(b => b.CreatedAt).IsRequired();

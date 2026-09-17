@@ -6,9 +6,11 @@ using ContentPilot.Domain.Content;
 using ContentPilot.Domain.Workflow;
 using ContentPilot.Infrastructure.Ai;
 using ContentPilot.Infrastructure.Branding;
+using ContentPilot.Infrastructure.Email;
 using ContentPilot.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ContentPilot.Infrastructure.Jobs;
 
@@ -41,6 +43,8 @@ public sealed class CampaignWorkflowJobHandler(
     AgentExecutor agentExecutor,
     ContentStrategistAgent strategist,
     Packaging.CampaignPackager packager,
+    IEmailSender emailSender,
+    IOptions<EmailOptions> emailOptions,
     ILogger<CampaignWorkflowJobHandler> logger)
     : JobHandler<AdvanceCampaignWorkflowPayload>
 {
@@ -177,7 +181,60 @@ public sealed class CampaignWorkflowJobHandler(
         var allApproved = items.All(status => status == ContentItemStatus.Approved);
 
         campaign.BeginPackaging();
-        await packager.BuildAsync(campaign, ct);
+        var package = await packager.BuildAsync(campaign, ct);
+
+        try
+        {
+            await SendCompletionEmailAsync(campaign, package, items, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogError(ex,
+                "Campaign {CampaignId} was packaged, but its completion email could not be sent.",
+                campaign.Id);
+        }
+
         campaign.Complete(allApproved, clock.UtcNow);
+    }
+
+    private async Task SendCompletionEmailAsync(
+        ContentCampaign campaign,
+        Domain.Packaging.CampaignPackage package,
+        IReadOnlyCollection<ContentItemStatus> itemStatuses,
+        CancellationToken ct)
+    {
+        var options = emailOptions.Value;
+
+        if (!options.Enabled || package.EmailSentAt is not null)
+        {
+            return;
+        }
+
+        var brand = await db.Brands.AsNoTracking().FirstOrDefaultAsync(b => b.Id == campaign.BrandId, ct);
+
+        if (string.IsNullOrWhiteSpace(brand?.NotificationEmail))
+        {
+            logger.LogInformation(
+                "Campaign {CampaignId} has no brand notification recipient; completion email was skipped.",
+                campaign.Id);
+            return;
+        }
+
+        var approved = itemStatuses.Count(status => status == ContentItemStatus.Approved);
+        var needsReview = itemStatuses.Count(status => status == ContentItemStatus.NeedsHumanReview);
+        var reviewUrl = $"{options.ReviewUiBaseUrl.TrimEnd('/')}/campaign/{campaign.Id}";
+        var subject = $"{brand.Name}: campaign for {campaign.WeekStart:yyyy-MM-dd} is ready";
+        var body = $"""
+            Your ContentPilot campaign package is ready.
+
+            Approved items: {approved}
+            Needs human review: {needsReview}
+
+            Review the campaign and download its ZIP:
+            {reviewUrl}
+            """;
+
+        await emailSender.SendAsync(brand.NotificationEmail, subject, body, ct);
+        package.MarkEmailSent(clock.UtcNow);
     }
 }
