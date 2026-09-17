@@ -2,9 +2,9 @@
 agent: claude
 phase: 9
 branch: main
-status: active
+status: done
 migrations: true
-updated: 2026-09-12
+updated: 2026-09-17
 ---
 
 ## paths
@@ -205,3 +205,10 @@ one above proves the API works, nothing more), the weekly email (needs a provide
 a tenant-deletion job (§11 — different from nightly retention), a tenant/brand-wide (not
 just per-campaign) QA pass-rate aggregate, the rest of §27's scenario catalogue, the metric
 dashboard, budget recalibration from real campaigns, and a performed backup/restore drill.
+
+## Claim released 2026-09-17
+
+No active work in progress on any of the paths above. Releasing so Codex can pick up the
+rest of `TODO-NEXT.md` (Brand Brain UI gaps, review UI gaps, Phase 6/8/9 items) without
+waiting on a stale claim from the 2026-09-12 live-testing session. Re-claim (`status: active`)
+before starting new work here.
