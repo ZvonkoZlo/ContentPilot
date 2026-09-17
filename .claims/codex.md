@@ -1,26 +1,19 @@
 ---
 agent: codex
-phase: screenshot-fidelity
-branch: main
-status: done
+phase: brand-review-ui
+branch: todo-brand-review-ui
+status: active
 migrations: false
-updated: 2026-09-16
+updated: 2026-09-17
 ---
 
 ## paths
 
-src/ContentPilot.Renderer/Engine/
-src/ContentPilot.Renderer/Imaging/
-src/ContentPilot.Renderer/Templates/Static/
-tests/ContentPilot.RendererTests/
+frontend/
 
 ## notes
 
-Investigate and fix the live `ScreenshotWrongAsset` failure without changing the calibrated
-threshold first. Scope is the renderer's screenshot compositing/extraction path and focused
-renderer regression coverage. Application quality checks, template selection, orchestration
-and `frontend/` remain under Claude's active claim and are read-only for this work.
-
-Merged as `635e8cc` on 2026-09-16. Live Linux replay changed the exact failing
-screenshot from `ScreenshotWrongAsset` (pHash 17) to Pass while retaining the pHash ceiling
-of 12; SSIM 0.9955 independently confirmed the asset. See `PARALLEL-WORK.md` for validation.
+Implement the remaining `TODO-NEXT.md` frontend work: Brand Brain personas, product facts
+and content preferences, followed by rendered-image preview and campaign-list cost/QA
+summaries. Backend paths remain read-only until a concrete missing endpoint is confirmed and
+claimed separately.
