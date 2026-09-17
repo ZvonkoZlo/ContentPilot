@@ -12,8 +12,11 @@ updated: 2026-09-17
 frontend/
 src/ContentPilot.Api/Endpoints/CampaignEndpoints.cs
 src/ContentPilot.Api/Endpoints/AdminEndpoints.cs
+src/ContentPilot.Application/Evals/
 tests/ContentPilot.IntegrationTests/ApiEndpointTests.cs
 tests/ContentPilot.IntegrationTests/AdminEndpointTests.cs
+tests/ContentPilot.IntegrationTests/EvalPersistenceTests.cs
+tests/ContentPilot.UnitTests/Evals/
 
 ## notes
 
@@ -23,3 +26,5 @@ summaries. The review found that item detail exposes no rendered asset URL, so t
 covers one campaign image-URL endpoint and its integration coverage.
 Phase 9 follow-up adds read-only eval trends to the existing admin endpoint and exposes the
 existing dead-job/stuck-run/eval data in the minimal Angular operator UI.
+The eval catalogue follow-up adds the remaining buildable deterministic §27 scenario for
+legal template/asset selection and keeps catalogue persistence coverage in sync.
